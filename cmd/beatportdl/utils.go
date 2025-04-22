@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"github.com/fatih/color"
 	"github.com/vbauerster/mpb/v8"
@@ -15,7 +16,7 @@ import (
 	"sync"
 )
 
-func (app *application) background(fn func()) {
+func (app *application) globalWorker(fn func()) {
 	app.wg.Add(1)
 
 	go func() {
@@ -35,9 +36,16 @@ func (app *application) downloadWorker(wg *sync.WaitGroup, fn func()) {
 	wg.Add(1)
 
 	go func() {
-		app.semAcquire(app.downloadSem)
 		defer wg.Done()
+		select {
+		case <-app.ctx.Done():
+			return
+		default:
+		}
+
+		app.semAcquire(app.downloadSem)
 		defer app.semRelease(app.downloadSem)
+
 		defer func() {
 			if err := recover(); err != nil {
 				fmt.Printf(fmt.Errorf("%s", err).Error())

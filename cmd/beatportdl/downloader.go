@@ -743,7 +743,7 @@ func (app *application) handleLabelLink(inst *beatport.Beatport, link *beatport.
 	}
 
 	err = ForPaginated[beatport.Release](link.ID, link.Params, inst.GetLabelReleases, func(release beatport.Release, i int) error {
-		app.background(func() {
+		app.globalWorker(func() {
 			releaseStoreUrl := release.StoreUrl()
 			releaseDir, err := app.setupDownloadsDirectory(downloadsDir, &release)
 			if err != nil {

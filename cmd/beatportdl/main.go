@@ -1,14 +1,17 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"github.com/fatih/color"
 	"github.com/vbauerster/mpb/v8"
 	"io"
 	"os"
+	"os/signal"
 	"strings"
 	"sync"
+	"syscall"
 	"unspok3n/beatportdl/config"
 	"unspok3n/beatportdl/internal/beatport"
 )
@@ -19,18 +22,21 @@ const (
 )
 
 type application struct {
-	config           *config.AppConfig
-	logFile          *os.File
-	logWriter        io.Writer
-	bp               *beatport.Beatport
-	bs               *beatport.Beatport
-	wg               sync.WaitGroup
-	downloadSem      chan struct{}
-	globalSem        chan struct{}
-	pbp              *mpb.Progress
+	config      *config.AppConfig
+	logFile     *os.File
+	logWriter   io.Writer
+	ctx         context.Context
+	wg          sync.WaitGroup
+	downloadSem chan struct{}
+	globalSem   chan struct{}
+	pbp         *mpb.Progress
+
 	urls             []string
 	activeFiles      map[string]struct{}
 	activeFilesMutex sync.RWMutex
+
+	bp *beatport.Beatport
+	bs *beatport.Beatport
 }
 
 func main() {
@@ -40,12 +46,27 @@ func main() {
 		Pause()
 	}
 
+	ctx, cancel := context.WithCancel(context.Background())
+
 	app := &application{
 		config:      cfg,
 		downloadSem: make(chan struct{}, cfg.MaxDownloadWorkers),
 		globalSem:   make(chan struct{}, cfg.MaxGlobalWorkers),
+		ctx:         ctx,
 		logWriter:   os.Stdout,
 	}
+
+	go func() {
+		sigCh := make(chan os.Signal, 1)
+		signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+
+		<-sigCh
+		app.LogInfo("Shutdown signal received. Waiting for download workers to finish...")
+		cancel()
+
+		<-sigCh
+		os.Exit(0)
+	}()
 
 	if cfg.WriteErrorLog {
 		logFilePath, err := ExecutableDirFilePath("error.log")
@@ -95,7 +116,7 @@ func main() {
 		app.activeFiles = make(map[string]struct{}, len(app.urls))
 
 		for _, url := range app.urls {
-			app.background(func() {
+			app.globalWorker(func() {
 				app.handleUrl(url)
 			})
 		}
