@@ -131,8 +131,13 @@ func GetLine() string {
 	reader := bufio.NewReader(os.Stdin)
 	input, err := reader.ReadString('\n')
 	if err != nil {
-		fmt.Printf("Error reading input string: %v\n", err)
-		os.Exit(1)
+		switch {
+		case errors.Is(err, io.EOF):
+			os.Exit(0)
+		default:
+			fmt.Fprintf(os.Stderr, "read input string: %v\n", err)
+			os.Exit(1)
+		}
 	}
 	input = strings.TrimSuffix(input, "\n")
 	input = strings.TrimSuffix(input, "\r")
