@@ -61,10 +61,14 @@ func main() {
 		signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 
 		<-sigCh
-		app.LogInfo("Shutdown signal received. Waiting for download workers to finish...")
-		cancel()
 
-		<-sigCh
+		if len(app.urls) > 0 {
+			app.LogInfo("Shutdown signal received. Waiting for download workers to finish")
+			cancel()
+
+			<-sigCh
+		}
+
 		os.Exit(0)
 	}()
 
