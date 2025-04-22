@@ -95,6 +95,8 @@ func main() {
 	app.bp = bp
 	app.bs = bs
 
+	quitFlag := flag.Bool("q", false, "Quit the main loop after finishing")
+
 	flag.Parse()
 	inputArgs := flag.Args()
 
@@ -123,6 +125,10 @@ func main() {
 
 		app.wg.Wait()
 		app.pbp.Shutdown()
+
+		if *quitFlag || ctx.Err() != nil {
+			break
+		}
 
 		app.urls = []string{}
 	}
