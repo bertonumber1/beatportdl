@@ -19,6 +19,7 @@ import (
 const (
 	configFilename = "beatportdl-config.yml"
 	cacheFilename  = "beatportdl-credentials.json"
+	errorFilename  = "beatportdl-err.log"
 )
 
 type application struct {
@@ -73,7 +74,7 @@ func main() {
 	}()
 
 	if cfg.WriteErrorLog {
-		logFilePath, err := ExecutableDirFilePath("error.log")
+		logFilePath, _, err := FindErrorLogFile()
 		if err != nil {
 			fmt.Println(err.Error())
 			Pause()

@@ -8,6 +8,7 @@ import (
 	"hash/fnv"
 	"net/url"
 	"os"
+	"path"
 	"sync"
 	"time"
 )
@@ -75,6 +76,11 @@ func (a *Auth) WriteCache() error {
 	data, err := json.MarshalIndent(a.tokenPair, "", " ")
 	if err != nil {
 		return fmt.Errorf("failed to marshal tokenPair: %w", err)
+	}
+
+	err = os.MkdirAll(path.Dir(a.cacheFile), 0700)
+	if err != nil {
+		return fmt.Errorf("could not create folder for cache file: %w", err)
 	}
 
 	if err := os.WriteFile(a.cacheFile, data, 0600); err != nil {

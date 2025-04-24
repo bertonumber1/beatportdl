@@ -13,13 +13,13 @@ import (
 )
 
 func Setup() (cfg *config.AppConfig, cachePath string, err error) {
-	configFilePath, err := FindFile(configFilename)
+	configFilePath, exists, err := FindConfigFile()
 	if err != nil {
-		fmt.Println("Config file not found, creating a new one")
-		configFilePath, err = ExecutableDirFilePath(configFilename)
-		if err != nil {
-			return nil, configFilePath, fmt.Errorf("get executable path: %w", err)
-		}
+		return nil, "", err
+	}
+
+	if !exists {
+		fmt.Println("Config file not found, creating a new one:", configFilePath)
 
 		fmt.Print("Username: ")
 		username := GetLine()
@@ -64,22 +64,9 @@ func Setup() (cfg *config.AppConfig, cachePath string, err error) {
 		return nil, configFilePath, fmt.Errorf("load config: %w", err)
 	}
 
-	execCachePath, err := ExecutableDirFilePath(cacheFilename)
+	cacheFilePath, exists, err := FindCacheFile()
 	if err != nil {
 		return nil, configFilePath, fmt.Errorf("get executable path: %w", err)
-	}
-	cacheFilePath := execCachePath
-
-	_, err = os.Stat(cacheFilePath)
-	if err != nil {
-		workingCachePath, err := WorkingDirFilePath(cacheFilename)
-		if err != nil {
-			return nil, configFilePath, fmt.Errorf("get working dir path: %w", err)
-		}
-		_, err = os.Stat(workingCachePath)
-		if err == nil {
-			cacheFilePath = workingCachePath
-		}
 	}
 
 	return parsedConfig, cacheFilePath, nil
