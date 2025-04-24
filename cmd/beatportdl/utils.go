@@ -200,19 +200,44 @@ func WorkingDirFilePath(fileName string) (string, error) {
 	return filePathCurrent, nil
 }
 
-func ConfigDirFilePath(fileName string) string {
-	var filePath string
+func FindConfigFile() (string, bool, error) {
+	var additionalDirs []string
 
-	if xdgCfgHome, exists := os.LookupEnv("XDG_CONFIG_HOME"); exists {
-		filePath = path.Join(xdgCfgHome, "beatportdl", fileName)
-	} else {
-		filePath = path.Join(os.Getenv("HOME"), ".config", "beatportdl", fileName)
+	if runtime.GOOS == "linux" {
+		var additionalDir string
+		if xdgCfgHome, exists := os.LookupEnv("XDG_CONFIG_HOME"); exists {
+			additionalDir = path.Join(xdgCfgHome, "beatportdl")
+		} else {
+			additionalDir = path.Join(os.Getenv("HOME"), ".config", "beatportdl")
+		}
+		additionalDirs = append(additionalDirs, additionalDir)
 	}
 
-	return filePath
+	return findFile(configFilename, additionalDirs)
 }
 
-func FindFile(fileName string) (string, bool, error) {
+func FindCacheFile() (string, bool, error) {
+	var additionalDirs []string
+
+	if runtime.GOOS == "linux" {
+		var additionalDir string
+		if xdgCfgHome, exists := os.LookupEnv("XDG_STATE_HOME"); exists {
+			additionalDir = path.Join(xdgCfgHome, "beatportdl")
+		} else {
+			additionalDir = path.Join(os.Getenv("HOME"), ".local", "state", "beatportdl")
+		}
+		additionalDirs = append(additionalDirs, additionalDir)
+	}
+
+	return findFile(cacheFilename, additionalDirs)
+}
+
+func FindErrorLogFile() (string, bool, error) {
+	var additionalDirs []string
+	return findFile(errorFilename, additionalDirs)
+}
+
+func findFile(fileName string, additionalDirs []string) (string, bool, error) {
 	configFilePaths := []string{}
 
 	filePathWorking, err := WorkingDirFilePath(fileName)
@@ -227,9 +252,9 @@ func FindFile(fileName string) (string, bool, error) {
 	}
 	configFilePaths = append(configFilePaths, filePathExec)
 
-	if runtime.GOOS == "linux" {
-		filePathConfig := ConfigDirFilePath(fileName)
-		configFilePaths = append(configFilePaths, filePathConfig)
+	for _, addadditionalDir := range additionalDirs {
+		additionalFilePath := path.Join(addadditionalDir, fileName)
+		configFilePaths = append(configFilePaths, additionalFilePath)
 	}
 
 	for _, configFilePath := range configFilePaths {

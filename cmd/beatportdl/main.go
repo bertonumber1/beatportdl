@@ -74,7 +74,7 @@ func main() {
 	}()
 
 	if cfg.WriteErrorLog {
-		logFilePath, _, err := FindFile(errorFilename)
+		logFilePath, _, err := FindErrorLogFile()
 		if err != nil {
 			fmt.Println(err.Error())
 			Pause()

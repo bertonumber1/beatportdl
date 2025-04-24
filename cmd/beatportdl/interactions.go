@@ -13,7 +13,7 @@ import (
 )
 
 func Setup() (cfg *config.AppConfig, cachePath string, err error) {
-	configFilePath, exists, err := FindFile(configFilename)
+	configFilePath, exists, err := FindConfigFile()
 	if err != nil {
 		return nil, "", err
 	}
@@ -64,7 +64,7 @@ func Setup() (cfg *config.AppConfig, cachePath string, err error) {
 		return nil, configFilePath, fmt.Errorf("load config: %w", err)
 	}
 
-	cacheFilePath, exists, err := FindFile(cacheFilename)
+	cacheFilePath, exists, err := FindCacheFile()
 	if err != nil {
 		return nil, configFilePath, fmt.Errorf("get executable path: %w", err)
 	}
