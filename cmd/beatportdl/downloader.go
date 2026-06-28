@@ -397,6 +397,72 @@ func (app *application) cleanup(downloadsDir string) {
 	}
 }
 
+// trackMatchesFilter returns false if the track should be skipped based on config filters.
+// Each non-empty filter list must have at least one match (AND between types, OR within a list).
+func (app *application) trackMatchesFilter(track *beatport.Track) bool {
+	if len(app.config.FilterGenres) == 0 &&
+		len(app.config.FilterSubgenres) == 0 &&
+		len(app.config.FilterArtists) == 0 &&
+		app.config.FilterPublishDateFrom == "" {
+		return true
+	}
+
+	if app.config.FilterPublishDateFrom != "" && track.PublishDate < app.config.FilterPublishDateFrom {
+		return false
+	}
+	if app.config.FilterPublishDateTo != "" && track.PublishDate > app.config.FilterPublishDateTo {
+		return false
+	}
+
+	if len(app.config.FilterGenres) > 0 {
+		matched := false
+		for _, g := range app.config.FilterGenres {
+			if strings.EqualFold(track.Genre.Name, g) {
+				matched = true
+				break
+			}
+		}
+		if !matched {
+			return false
+		}
+	}
+
+	if len(app.config.FilterSubgenres) > 0 {
+		matched := false
+		subgenreName := ""
+		if track.Subgenre != nil {
+			subgenreName = track.Subgenre.Name
+		}
+		for _, sg := range app.config.FilterSubgenres {
+			if strings.EqualFold(subgenreName, sg) {
+				matched = true
+				break
+			}
+		}
+		if !matched {
+			return false
+		}
+	}
+
+	if len(app.config.FilterArtists) > 0 {
+		matched := false
+	outer:
+		for _, filterArtist := range app.config.FilterArtists {
+			for _, trackArtist := range track.Artists {
+				if strings.EqualFold(trackArtist.Name, filterArtist) {
+					matched = true
+					break outer
+				}
+			}
+		}
+		if !matched {
+			return false
+		}
+	}
+
+	return true
+}
+
 func ForPaginated[T any](
 	entityId int64,
 	params string,
@@ -425,6 +491,11 @@ func ForPaginated[T any](
 }
 
 func (app *application) handleUrl(url string) {
+	if app.scanMode {
+		app.handleScanUrl(url)
+		return
+	}
+
 	link, err := app.bp.ParseUrl(url)
 	if err != nil {
 		app.errorLogWrapper(url, "parse url", err)
@@ -763,6 +834,10 @@ func (app *application) handleLabelLink(inst *beatport.Beatport, link *beatport.
 
 			wg := sync.WaitGroup{}
 			err = ForPaginated[beatport.Track](release.ID, "", inst.GetReleaseTracks, func(track beatport.Track, i int) error {
+				if !app.trackMatchesFilter(&track) {
+					app.infoLogWrapper(track.StoreUrl(), "skipped (filter)")
+					return nil
+				}
 				app.downloadWorker(&wg, func() {
 					trackStoreUrl := track.StoreUrl()
 					t, err := inst.GetTrack(track.ID)
@@ -818,6 +893,10 @@ func (app *application) handleArtistLink(inst *beatport.Beatport, link *beatport
 
 	wg := sync.WaitGroup{}
 	err = ForPaginated[beatport.Track](link.ID, link.Params, inst.GetArtistTracks, func(track beatport.Track, i int) error {
+		if !app.trackMatchesFilter(&track) {
+			app.infoLogWrapper(track.StoreUrl(), "skipped (filter)")
+			return nil
+		}
 		app.downloadWorker(&wg, func() {
 			trackStoreUrl := track.StoreUrl()
 			t, err := inst.GetTrack(track.ID)

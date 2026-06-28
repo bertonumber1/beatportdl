@@ -46,6 +46,13 @@ type AppConfig struct {
 	TagMappings map[string]map[string]string `yaml:"tag_mappings,omitempty"`
 
 	Proxy string `yaml:"proxy,omitempty"`
+
+	// Track filtering — all non-empty lists must match (AND between types, OR within a list)
+	FilterGenres          []string `yaml:"filter_genres,omitempty"`
+	FilterSubgenres       []string `yaml:"filter_subgenres,omitempty"`
+	FilterArtists         []string `yaml:"filter_artists,omitempty"`
+	FilterPublishDateFrom string   `yaml:"filter_publish_date_from,omitempty"` // YYYY-MM-DD
+	FilterPublishDateTo   string   `yaml:"filter_publish_date_to,omitempty"`   // YYYY-MM-DD
 }
 
 const (

@@ -36,6 +36,8 @@ type application struct {
 	activeFiles      map[string]struct{}
 	activeFilesMutex sync.RWMutex
 
+	scanMode bool
+
 	bp *beatport.Beatport
 	bs *beatport.Beatport
 }
@@ -101,8 +103,10 @@ func main() {
 	app.bs = bs
 
 	quitFlag := flag.Bool("q", false, "Quit the main loop after finishing")
+	scanFlag := flag.Bool("scan", false, "Scan a label/artist URL and list genres, subgenres, BPM range, and artists without downloading")
 
 	flag.Parse()
+	app.scanMode = *scanFlag
 	inputArgs := flag.Args()
 
 	for _, arg := range inputArgs {

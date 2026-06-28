@@ -1,0 +1,17 @@
+services:
+  beatportdl-test:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: beatportdl-test
+
+    network_mode: "container:gluetun"
+
+    stdin_open: true
+    tty: true
+
+    volumes:
+      - ./config:/config
+      - /home/media/Desktop:/downloads
+
+    restart: "no"
