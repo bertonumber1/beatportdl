@@ -41,8 +41,11 @@ When you paste a **label or artist URL** at the prompt, the wizard automatically
 1. Scans the full catalogue (shows live progress)
 2. Presents a numbered genre menu with track counts — pick by number, `*` for all, or Enter to skip
 3. Same for subgenres
-4. Optional date-from filter (`1996`, `1996-06`, or `1996-06-01`)
-5. Shows a summary and asks to confirm before downloading
+4. Artists — top 30 by track count, same selection rules; Enter to skip
+5. Optional date range (`1996`, `1996-06`, or `1996-06-01` for from/to)
+6. Shows a summary and asks to confirm before downloading
+
+Type `b` at any step to go back to the previous one.
 
 ```
 Enter label/artist URL, search query, or label name: crestwave
@@ -59,16 +62,29 @@ Genres found:
    1. House                                      198 tracks
    2. Hard Techno                                 91 tracks
    3. Dance                                       23 tracks
-Select (e.g. 1,3  |  * for all  |  Enter to skip filter): 1,3
+Select (e.g. 1,3  |  * for all  |  Enter to skip  |  b to go back): 1,3
 
-From date (e.g. 1996 or 1996-06-01, Enter for all): 1996
+Subgenres found:
+   1. Deep House                                 142 tracks
+   2. Minimal / Deep Tech                         56 tracks
+Select (e.g. 1,3  |  * for all  |  Enter to skip  |  b to go back):
+
+Artists (top 30 by track count):
+   1. DJ Pulse                                    24 tracks
+   2. Mia Nova                                    18 tracks
+   3. Koda                                        11 tracks
+Select (e.g. 1,3  |  * for all  |  Enter to skip  |  b to go back): 1,2
+
+Download from date (e.g. 1996 or 1996-06-01, Enter for all, b to go back): 2018
+Download up to date   (e.g. 2024 or 2024-12-31, Enter for all, b to go back):
 
 --- Download filter summary ---
   Genres:     House, Dance
   Subgenres:  all
-  From date:  1996-01-01
+  Artists:    DJ Pulse, Mia Nova
+  Dates:      2018-01-01 → present
 
-Start download? (y/n): y
+Start download? (y/n/b to go back): y
 ```
 
 You can also **search by label name** — type the label name at the prompt and matching labels appear alongside track/release results.
@@ -301,10 +317,13 @@ Enter label/artist URL, search query, or label name: crestwave
 The wizard will:
 1. Show matching labels — type the number and press Enter
 2. Scan the full catalogue (shows progress as it goes)
-3. Display all genres found with track counts — pick by number (e.g. `1,3`), type `*` for all, or press Enter to skip the filter
+3. Display all genres found with track counts — pick by number (e.g. `1,3`), type `*` for all, or press Enter to skip
 4. Same for subgenres
-5. Ask for a date — type a year like `1996` or a full date `1996-06-01`, or press Enter for all time
-6. Show a summary and ask `y/n` before downloading
+5. Top 30 artists by track count — same selection rules, or press Enter to skip
+6. Optional date range — type a year like `1996` or a full date `1996-06-01`, or press Enter for all time
+7. Show a summary and ask `y/n` before downloading
+
+Type `b` at any step to go back to the previous one.
 
 **6. Scanning a label without downloading**
 
