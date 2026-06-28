@@ -18,6 +18,32 @@ func (app *application) errorLogWrapper(url, step string, err error) {
 	app.LogError(fmt.Sprintf("[%s] %s", url, step), err)
 }
 
+// skippableReason returns a human-readable reason if the download error is one
+// that should be silently skipped (pre-release, territory restricted, etc.).
+// Returns "" if the error is a real failure that should be reported.
+func skippableReason(err error) string {
+	if err == nil {
+		return ""
+	}
+	msg := strings.ToLower(err.Error())
+	switch {
+	case strings.Contains(msg, "territory"),
+		strings.Contains(msg, "not available in your"),
+		strings.Contains(msg, "status code: 451"):
+		return "territory restricted"
+	case strings.Contains(msg, "pre-release"),
+		strings.Contains(msg, "pre release"),
+		strings.Contains(msg, "not yet available"),
+		strings.Contains(msg, "not available for download"),
+		strings.Contains(msg, "release date"):
+		return "pre-release"
+	case strings.Contains(msg, "status code: 403"),
+		strings.Contains(msg, "status code: 404"):
+		return "unavailable"
+	}
+	return ""
+}
+
 func (app *application) infoLogWrapper(url, message string) {
 	app.LogInfo(fmt.Sprintf("[%s] %s", url, message))
 }
@@ -133,6 +159,10 @@ func (app *application) saveTrack(inst *beatport.Beatport, track *beatport.Track
 	case "medium-hls":
 		trackStream, err := inst.StreamTrack(track.ID)
 		if err != nil {
+			if reason := skippableReason(err); reason != "" {
+				app.infoLogWrapper(track.StoreUrl(), fmt.Sprintf("skipped (%s)", reason))
+				return "", nil
+			}
 			return "", err
 		}
 		fileExtension = ".m4a"
@@ -141,6 +171,10 @@ func (app *application) saveTrack(inst *beatport.Beatport, track *beatport.Track
 	default:
 		trackDownload, err := inst.DownloadTrack(track.ID, quality)
 		if err != nil {
+			if reason := skippableReason(err); reason != "" {
+				app.infoLogWrapper(track.StoreUrl(), fmt.Sprintf("skipped (%s)", reason))
+				return "", nil
+			}
 			return "", err
 		}
 		switch trackDownload.StreamQuality {
