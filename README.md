@@ -1,12 +1,3 @@
-```
-                                __  _____
-  __  ______  _________  ____  / /_|__  /____
- / / / / __ \/ ___/ __ \/ __ \/ //_//_ </ __ \
-/ /_/ / / / (__  ) /_/ / /_/ / ,< ___/ / / / /
-\__,_/_/ /_/____/ .___/\____/_/|_/____/_/ /_/
-               /_/
-```
-
 # BeatportDL
 
 Beatport & Beatsource downloader (FLAC, AAC)
@@ -48,14 +39,14 @@ When you paste a **label or artist URL** at the prompt, the wizard automatically
 Type `b` at any step to go back to the previous one.
 
 ```
-Enter label/artist URL, search query, or label name: crestwave
+Enter label/artist URL, search query, or label name: your-label
 
 [ Labels ]
-   1. Crestwave Records
+   1. Your Label
 
 Enter result number(s): 1
 
-Scanning Crestwave Records — please wait...
+Scanning Your Label — please wait...
   Scanning release 47 — 312 tracks found so far...
 
 Genres found:
@@ -70,9 +61,9 @@ Subgenres found:
 Select (e.g. 1,3  |  * for all  |  Enter to skip  |  b to go back):
 
 Artists (by track count):
-   1. DJ Pulse                                    24 tracks
-   2. Mia Nova                                    18 tracks
-   3. Koda                                        11 tracks
+   1. Artist One                                  24 tracks
+   2. Artist Two                                  18 tracks
+   3. Artist Three                                11 tracks
 Select (e.g. 1,3  |  * for all  |  Enter to skip  |  b to go back): 1,2
 
 Download from date (e.g. 1996 or 1996-06-01, Enter for all, b to go back): 2018
@@ -81,7 +72,7 @@ Download up to date   (e.g. 2024 or 2024-12-31, Enter for all, b to go back):
 --- Download filter summary ---
   Genres:     House, Dance
   Subgenres:  all
-  Artists:    DJ Pulse, Mia Nova
+  Artists:    Artist One, Artist Two
   Dates:      2018-01-01 → present
 
 Start download? (y/n/b to go back): y
@@ -311,7 +302,7 @@ Enter label/artist URL, search query, or label name:
 Paste a Beatport label URL (copy it from your browser while browsing a label page) or just type the label name:
 
 ```
-Enter label/artist URL, search query, or label name: crestwave
+Enter label/artist URL, search query, or label name: your-label
 ```
 
 The wizard will:
