@@ -41,7 +41,7 @@ When you paste a **label or artist URL** at the prompt, the wizard automatically
 1. Scans the full catalogue (shows live progress)
 2. Presents a numbered genre menu with track counts — pick by number, `*` for all, or Enter to skip
 3. Same for subgenres
-4. Artists — top 30 by track count, same selection rules; Enter to skip
+4. Artists — by track count, same selection rules; Enter to skip
 5. Optional date range (`1996`, `1996-06`, or `1996-06-01` for from/to)
 6. Shows a summary and asks to confirm before downloading
 
@@ -69,7 +69,7 @@ Subgenres found:
    2. Minimal / Deep Tech                         56 tracks
 Select (e.g. 1,3  |  * for all  |  Enter to skip  |  b to go back):
 
-Artists (top 30 by track count):
+Artists (by track count):
    1. DJ Pulse                                    24 tracks
    2. Mia Nova                                    18 tracks
    3. Koda                                        11 tracks
@@ -319,7 +319,7 @@ The wizard will:
 2. Scan the full catalogue (shows progress as it goes)
 3. Display all genres found with track counts — pick by number (e.g. `1,3`), type `*` for all, or press Enter to skip
 4. Same for subgenres
-5. Top 30 artists by track count — same selection rules, or press Enter to skip
+5. All artists ranked by track count — same selection rules, or press Enter to skip
 6. Optional date range — type a year like `1996` or a full date `1996-06-01`, or press Enter for all time
 7. Show a summary and ask `y/n` before downloading
 
