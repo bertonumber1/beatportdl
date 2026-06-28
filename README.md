@@ -6,6 +6,10 @@ Beatport & Beatsource downloader (FLAC, AAC)
 
 ![Screenshot](/screenshots/main.png?raw=true "Screenshot")
 
+> **Credit** — This tool was created by [**unspok3n**](https://github.com/unspok3n). All core functionality, API integration, tag writing, and file handling is their work. This fork adds filtering and an interactive wizard on top of that foundation. Please star the [original repository](https://github.com/unspok3n/beatportdl) if you find the tool useful.
+
+---
+
 Added in this fork
 ---
 
