@@ -146,9 +146,6 @@ func (app *application) labelWizard(rawURL string) {
 	genres := rankMap(stats.genres)
 	subgenres := rankMap(stats.subgenres)
 	artists := rankMap(stats.artists)
-	if len(artists) > 30 {
-		artists = artists[:30]
-	}
 
 	const (
 		stepGenres = iota
@@ -193,7 +190,7 @@ func (app *application) labelWizard(rawURL string) {
 				step = stepDateFrom
 				continue
 			}
-			sel, back := selectFromList("\nArtists (top 30 by track count)", artists)
+			sel, back := selectFromList("\nArtists (by track count)", artists)
 			if back {
 				if len(subgenres) > 0 {
 					step = stepSubgenres
