@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/fatih/color"
 	"github.com/vbauerster/mpb/v8"
@@ -144,6 +145,8 @@ func GetLine() string {
 	if err != nil {
 		switch {
 		case errors.Is(err, io.EOF):
+			fmt.Println("\n[stdin closed]")
+			WindowsPause()
 			os.Exit(0)
 		default:
 			fmt.Fprintf(os.Stderr, "read input string: %v\n", err)
@@ -159,6 +162,25 @@ func Pause() {
 	fmt.Println("\nPress enter to exit")
 	fmt.Scanln()
 	os.Exit(1)
+}
+
+// WindowsPause keeps the console window open on Windows so the user can read
+// output before the window closes. On other platforms this is a no-op.
+// Uses a goroutine + timeout so it still unblocks if stdin is already closed.
+func WindowsPause() {
+	if runtime.GOOS != "windows" {
+		return
+	}
+	fmt.Println("\nPress enter to exit")
+	done := make(chan struct{}, 1)
+	go func() {
+		fmt.Scanln()
+		done <- struct{}{}
+	}()
+	select {
+	case <-done:
+	case <-time.After(30 * time.Second):
+	}
 }
 
 func (app *application) LogError(caller string, err error) {

@@ -72,6 +72,7 @@ func main() {
 			<-sigCh
 		}
 
+		WindowsPause()
 		os.Exit(0)
 	}()
 
@@ -141,4 +142,6 @@ func main() {
 
 		app.urls = []string{}
 	}
+
+	WindowsPause()
 }
