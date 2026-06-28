@@ -419,7 +419,10 @@ func (app *application) handleTrack(inst *beatport.Beatport, track *beatport.Tra
 	if err != nil {
 		return fmt.Errorf("save track: %v", err)
 	}
-	if err = app.tagTrack(location, track, coverPath); err != nil && location != "" {
+	if location == "" {
+		return nil
+	}
+	if err = app.tagTrack(location, track, coverPath); err != nil {
 		return fmt.Errorf("tag track: %v", err)
 	}
 	return nil
@@ -876,6 +879,10 @@ func (app *application) handleLabelLink(inst *beatport.Beatport, link *beatport.
 					trackStoreUrl := track.StoreUrl()
 					t, err := inst.GetTrack(track.ID)
 					if err != nil {
+						if reason := skippableReason(err); reason != "" {
+							app.infoLogWrapper(trackStoreUrl, fmt.Sprintf("skipped (%s)", reason))
+							return
+						}
 						app.errorLogWrapper(trackStoreUrl, "fetch full track", err)
 						return
 					}
@@ -935,6 +942,10 @@ func (app *application) handleArtistLink(inst *beatport.Beatport, link *beatport
 			trackStoreUrl := track.StoreUrl()
 			t, err := inst.GetTrack(track.ID)
 			if err != nil {
+				if reason := skippableReason(err); reason != "" {
+					app.infoLogWrapper(trackStoreUrl, fmt.Sprintf("skipped (%s)", reason))
+					return
+				}
 				app.errorLogWrapper(trackStoreUrl, "fetch full track", err)
 				return
 			}
