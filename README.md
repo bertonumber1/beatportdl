@@ -19,6 +19,16 @@ Beatport & Beatsource downloader (FLAC, AAC)
 
 ---
 
+> ### PLEASE READ BEFORE RAISING ISSUES
+>
+> **This is a personal fork.** If you encounter a problem, bug, or unexpected behaviour, please **do not contact or open issues against [unspok3n's original repository](https://github.com/unspok3n/beatportdl)** — it is not their problem and they should not be bothered with issues that originate here.
+>
+> For anything specific to this fork, raise it here or contact **[bertonumber1](https://github.com/bertonumber1)** directly.
+>
+> All credit, praise, and recognition goes entirely to [**unspok3n**](https://github.com/unspok3n) for the extraordinary work in building this project from the ground up. The wizard and filtering additions in this fork are built on top of their foundation and exist purely for fun and educational purposes. Please respect the original author.
+
+---
+
 Added in this fork
 ---
 
