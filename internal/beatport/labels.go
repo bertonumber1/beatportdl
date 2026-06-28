@@ -3,6 +3,7 @@ package beatport
 import (
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"strconv"
 	"time"
 )
@@ -49,6 +50,24 @@ func (b *Beatport) GetLabel(id int64) (*Label, error) {
 	}
 	response.Store = b.store
 	return response, nil
+}
+
+func (b *Beatport) SearchLabels(query string) (*Paginated[Label], error) {
+	res, err := b.fetch(
+		"GET",
+		fmt.Sprintf("/catalog/labels/?q=%s&order_by=name&per_page=10", url.QueryEscape(query)),
+		nil,
+		"",
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer res.Body.Close()
+	var response Paginated[Label]
+	if err = json.NewDecoder(res.Body).Decode(&response); err != nil {
+		return nil, err
+	}
+	return &response, nil
 }
 
 func (b *Beatport) GetLabelReleases(id int64, page int, params string) (*Paginated[Release], error) {

@@ -6,6 +6,305 @@ Beatport & Beatsource downloader (FLAC, AAC)
 
 ![Screenshot](/screenshots/main.png?raw=true "Screenshot")
 
+Added in this fork
+---
+
+This fork adds **label/artist filtering** and an **interactive download wizard** on top of the original BeatportDL.
+
+### Interactive Wizard
+
+When you paste a **label or artist URL** at the prompt, the wizard automatically kicks in:
+
+1. Scans the full catalogue (shows live progress)
+2. Presents a numbered genre menu with track counts — pick by number, `*` for all, or Enter to skip
+3. Same for subgenres
+4. Optional date-from filter (`1996`, `1996-06`, or `1996-06-01`)
+5. Shows a summary and asks to confirm before downloading
+
+```
+Enter label/artist URL, search query, or label name: divucsa
+
+[ Labels ]
+   1. Divucsa Music
+
+Enter result number(s): 1
+
+Scanning Divucsa Music — please wait...
+  Scanning release 47 — 312 tracks found so far...
+
+Genres found:
+   1. House                                      198 tracks
+   2. Hard Techno                                 91 tracks
+   3. Dance                                       23 tracks
+Select (e.g. 1,3  |  * for all  |  Enter to skip filter): 1,3
+
+From date (e.g. 1996 or 1996-06-01, Enter for all): 1996
+
+--- Download filter summary ---
+  Genres:     House, Dance
+  Subgenres:  all
+  From date:  1996-01-01
+
+Start download? (y/n): y
+```
+
+You can also **search by label name** — type the label name at the prompt and matching labels appear alongside track/release results.
+
+### Scan Mode
+
+Use `--scan` to inspect a label or artist without downloading anything:
+
+```shell
+./beatportdl --scan https://www.beatport.com/label/label-name/12345
+```
+
+Output shows all genres, subgenres, BPM range, and top artists with track counts — useful for knowing exactly what filter values to use.
+
+### Config-based Filtering
+
+Filters can also be set permanently in `beatportdl-config.yml` for non-interactive / scripted use (e.g. passing a URL as a CLI argument). All filters are **AND between types, OR within a list** — so genres AND subgenres AND date must all match.
+
+New config options:
+
+| Option | Type | Description |
+|---|---|---|
+| `filter_genres` | String list | Only download tracks whose genre matches one of these (case-insensitive) |
+| `filter_subgenres` | String list | Only download tracks whose subgenre matches one of these (case-insensitive) |
+| `filter_artists` | String list | Only download tracks featuring at least one of these artists (case-insensitive) |
+| `filter_publish_date_from` | String `YYYY-MM-DD` | Only download tracks published on or after this date |
+| `filter_publish_date_to`   | String `YYYY-MM-DD` | Only download tracks published on or before this date |
+
+Example — only House and Dance tracks from 1996 onwards:
+
+```yaml
+filter_genres:
+  - House
+  - Dance
+
+filter_publish_date_from: "1996-01-01"
+filter_publish_date_to:   "2024-12-31"
+```
+
+Filtered-out tracks log `skipped (filter)` so you can verify what is being excluded.
+
+### Docker build
+
+A multi-stage `Dockerfile` is included that builds from source (including TagLib 2.x) — no pre-built binary required. See the `Dockerfile` in the root of the repo.
+
+---
+
+Installation Guide
+---
+
+### Requirements
+
+- An active [Beatport](https://stream.beatport.com/) or [Beatsource](https://stream.beatsource.com/) **Professional** streaming subscription (for FLAC). Lower tiers support AAC quality.
+- Your Beatport username and password.
+
+---
+
+### Linux / Ubuntu
+
+There are two ways to run on Linux — via Docker (recommended, no build tools needed) or as a native binary.
+
+#### Option A — Docker (recommended)
+
+Docker handles all dependencies automatically. No Go compiler or TagLib installation required.
+
+**1. Install Docker**
+
+If you don't have Docker installed:
+```bash
+sudo apt update
+sudo apt install docker.io docker-compose-plugin
+sudo usermod -aG docker $USER
+```
+Log out and back in for the group change to take effect.
+
+**2. Clone this repo**
+```bash
+git clone https://github.com/bertonumber1/beatportdl
+cd beatportdl
+```
+
+**3. Build the image**
+```bash
+docker compose build
+```
+This compiles everything from source including TagLib 2.x — takes a few minutes the first time, cached after that.
+
+**4. Create your config**
+
+Edit `config/beatportdl-config.yml`:
+```yaml
+username: your_beatport_username
+password: your_beatport_password
+
+quality: lossless
+downloads_directory: /downloads
+
+sort_by_context: true
+sort_by_label: true
+
+track_exists: skip
+
+release_directory_template: "{catalog_number} - {artists} - {name} ({year})"
+
+# --- Optional filters ---
+# filter_genres:
+#   - House
+#   - Dance
+#
+# filter_subgenres:
+#   - Pont Aeri
+#
+# filter_publish_date_from: "1996-01-01"
+# filter_publish_date_to:   "2024-12-31"
+```
+
+**5. Create a launch script**
+
+Create `/usr/local/bin/beatportdl` (or anywhere on your PATH):
+```bash
+sudo nano /usr/local/bin/beatportdl
+```
+Paste:
+```bash
+#!/bin/bash
+docker run --rm -it \
+  --user $(id -u):$(id -g) \
+  -v /path/to/beatportdl/config:/config \
+  -v /path/to/your/music:/downloads \
+  beatportdl-beatportdl:latest "$@"
+```
+Replace the paths to match your setup, then:
+```bash
+sudo chmod +x /usr/local/bin/beatportdl
+```
+
+**6. Run it**
+```bash
+beatportdl
+```
+
+---
+
+#### Option B — Native binary
+
+Download the latest `beatportdl-linux-amd64` from the [Releases](https://github.com/bertonumber1/beatportdl/releases) page.
+
+```bash
+chmod +x beatportdl-linux-amd64
+./beatportdl-linux-amd64
+```
+
+On first run it will ask for your username, password, and downloads directory, then create a `beatportdl-config.yml` you can edit.
+
+---
+
+### Windows (no Docker required)
+
+> All the filtering, wizard, and scan features are included in the Windows build. No installation needed — just a folder with two files.
+
+**1. Download the binary**
+
+Go to the [Releases](https://github.com/bertonumber1/beatportdl/releases) page of this fork and download `beatportdl-windows-amd64.exe`.
+
+**2. Set up your folder**
+
+Create a folder anywhere you like, for example `C:\BeatportDL\`. Place the `.exe` inside it.
+
+**3. Create your config file**
+
+In the same folder, create a new text file called `beatportdl-config.yml` (make sure Windows doesn't add `.txt` to the end — rename it if needed).
+
+Paste the following into it, filling in your own details:
+
+```yaml
+username: your_beatport_username
+password: your_beatport_password
+
+quality: lossless
+downloads_directory: C:\Users\YourName\Music\Beatport
+
+sort_by_context: true
+sort_by_label: true
+
+track_exists: skip
+
+release_directory_template: "{catalog_number} - {artists} - {name} ({year})"
+
+# --- Optional filters ---
+# Remove the # from any line you want to activate.
+# Genre and subgenre names must match exactly what --scan shows (case-insensitive).
+#
+# filter_genres:
+#   - House
+#   - Dance
+#
+# filter_subgenres:
+#   - Pont Aeri
+#
+# filter_publish_date_from: "1996-01-01"
+# filter_publish_date_to:   "2024-12-31"
+```
+
+> **Windows path tip:** use either forward slashes (`C:/Users/YourName/Music`) or double backslashes (`C:\\Users\\YourName\\Music`) — both work.
+
+**4. Run it**
+
+Open **PowerShell** (right-click the Start menu → Windows PowerShell), navigate to your folder, and run:
+
+```powershell
+cd C:\BeatportDL
+.\beatportdl-windows-amd64.exe
+```
+
+Or simply double-click the `.exe` from Explorer — a terminal window will open automatically.
+
+You will see:
+```
+Enter label/artist URL, search query, or label name:
+```
+
+**5. Downloading from a label — using the wizard**
+
+Paste a Beatport label URL (copy it from your browser while browsing a label page) or just type the label name:
+
+```
+Enter label/artist URL, search query, or label name: divucsa
+```
+
+The wizard will:
+1. Show matching labels — type the number and press Enter
+2. Scan the full catalogue (shows progress as it goes)
+3. Display all genres found with track counts — pick by number (e.g. `1,3`), type `*` for all, or press Enter to skip the filter
+4. Same for subgenres
+5. Ask for a date — type a year like `1996` or a full date `1996-06-01`, or press Enter for all time
+6. Show a summary and ask `y/n` before downloading
+
+**6. Scanning a label without downloading**
+
+To see what genres, subgenres, BPM ranges, and artists are on a label before committing to a download:
+
+```powershell
+.\beatportdl-windows-amd64.exe --scan https://www.beatport.com/label/label-name/12345
+```
+
+Use the genre/subgenre names it shows as your filter values in the config or in the wizard.
+
+**7. Useful tips**
+
+- `beatportdl-credentials.json` appears after first login — keep it, it saves you logging in every time
+- Add `-q` to quit automatically after finishing instead of looping back to the prompt:
+  ```powershell
+  .\beatportdl-windows-amd64.exe -q https://www.beatport.com/label/label-name/12345
+  ```
+- To filter permanently (useful if you always want the same genres), uncomment and edit the `filter_genres` / `filter_subgenres` / `filter_publish_date_from` / `filter_publish_date_to` lines in the config file — filters set there apply to every download, bypassing the wizard
+- Skipped tracks are logged as `skipped (filter)` so you can verify the filter is working
+
+---
+
 Setup
 ---
 1. [Download](https://github.com/unspok3n/beatportdl/releases/) or [build](#building) BeatportDL.
