@@ -89,8 +89,8 @@ func (app *application) mainPrompt() {
 	}
 }
 
-// labelWizard scans a label/artist URL and walks the user through genre/subgenre/date
-// selection before queuing the download.
+// labelWizard scans a label/artist URL and walks the user through genre/subgenre/date/artist
+// selection before queuing the download. Type "b" at any prompt to go back one step.
 func (app *application) labelWizard(rawURL string) {
 	link, err := app.bp.ParseUrl(rawURL)
 	if err != nil {
@@ -143,76 +143,168 @@ func (app *application) labelWizard(rawURL string) {
 
 	fmt.Printf("\nFound %d tracks total.\n", stats.total)
 
-	// --- Genre selection ---
 	genres := rankMap(stats.genres)
-	app.config.FilterGenres = selectFromList("\nGenres", genres)
-
-	// --- Subgenre selection ---
 	subgenres := rankMap(stats.subgenres)
-	if len(subgenres) > 0 {
-		app.config.FilterSubgenres = selectFromList("\nSubgenres", subgenres)
+	artists := rankMap(stats.artists)
+	if len(artists) > 30 {
+		artists = artists[:30]
 	}
 
-	// --- Date range ---
-	fmt.Print("\nDownload from date (e.g. 1996 or 1996-06-01, Enter for all): ")
-	app.config.FilterPublishDateFrom = normaliseDate(strings.TrimSpace(GetLine()))
+	const (
+		stepGenres = iota
+		stepSubgenres
+		stepArtists
+		stepDateFrom
+		stepDateTo
+		stepConfirm
+	)
 
-	fmt.Print("Download up to date   (e.g. 2024 or 2024-12-31, Enter for all): ")
-	app.config.FilterPublishDateTo = normaliseDateTo(strings.TrimSpace(GetLine()))
+	var selectedGenres, selectedSubgenres, selectedArtists []string
+	var dateFrom, dateTo string
 
-	// --- Summary ---
-	fmt.Println("\n--- Download filter summary ---")
-	if len(app.config.FilterGenres) > 0 {
-		fmt.Println("  Genres:    ", strings.Join(app.config.FilterGenres, ", "))
-	} else {
-		fmt.Println("  Genres:     all")
-	}
-	if len(app.config.FilterSubgenres) > 0 {
-		fmt.Println("  Subgenres: ", strings.Join(app.config.FilterSubgenres, ", "))
-	} else {
-		fmt.Println("  Subgenres:  all")
-	}
-	dateRange := "all time"
-	if app.config.FilterPublishDateFrom != "" && app.config.FilterPublishDateTo != "" {
-		dateRange = app.config.FilterPublishDateFrom + " → " + app.config.FilterPublishDateTo
-	} else if app.config.FilterPublishDateFrom != "" {
-		dateRange = app.config.FilterPublishDateFrom + " → present"
-	} else if app.config.FilterPublishDateTo != "" {
-		dateRange = "up to " + app.config.FilterPublishDateTo
-	}
-	fmt.Println("  Dates:     ", dateRange)
+	step := stepGenres
+	for {
+		switch step {
 
-	fmt.Print("\nStart download? (y/n): ")
-	if strings.ToLower(strings.TrimSpace(GetLine())) != "y" {
-		fmt.Println("Cancelled.")
-		return
-	}
+		case stepGenres:
+			sel, back := selectFromList("\nGenres", genres)
+			if back {
+				fmt.Println("Cancelled.")
+				return
+			}
+			selectedGenres = sel
+			step = stepSubgenres
 
-	app.urls = append(app.urls, rawURL)
+		case stepSubgenres:
+			if len(subgenres) == 0 {
+				step = stepArtists
+				continue
+			}
+			sel, back := selectFromList("\nSubgenres", subgenres)
+			if back {
+				step = stepGenres
+				continue
+			}
+			selectedSubgenres = sel
+			step = stepArtists
+
+		case stepArtists:
+			if len(artists) == 0 {
+				step = stepDateFrom
+				continue
+			}
+			sel, back := selectFromList("\nArtists (top 30 by track count)", artists)
+			if back {
+				if len(subgenres) > 0 {
+					step = stepSubgenres
+				} else {
+					step = stepGenres
+				}
+				continue
+			}
+			selectedArtists = sel
+			step = stepDateFrom
+
+		case stepDateFrom:
+			fmt.Print("\nDownload from date (e.g. 1996 or 1996-06-01, Enter for all, b to go back): ")
+			input := strings.TrimSpace(GetLine())
+			if input == "b" {
+				if len(artists) > 0 {
+					step = stepArtists
+				} else if len(subgenres) > 0 {
+					step = stepSubgenres
+				} else {
+					step = stepGenres
+				}
+				continue
+			}
+			dateFrom = normaliseDate(input)
+			step = stepDateTo
+
+		case stepDateTo:
+			fmt.Print("Download up to date   (e.g. 2024 or 2024-12-31, Enter for all, b to go back): ")
+			input := strings.TrimSpace(GetLine())
+			if input == "b" {
+				step = stepDateFrom
+				continue
+			}
+			dateTo = normaliseDateTo(input)
+			step = stepConfirm
+
+		case stepConfirm:
+			app.config.FilterGenres = selectedGenres
+			app.config.FilterSubgenres = selectedSubgenres
+			app.config.FilterArtists = selectedArtists
+			app.config.FilterPublishDateFrom = dateFrom
+			app.config.FilterPublishDateTo = dateTo
+
+			fmt.Println("\n--- Download filter summary ---")
+			if len(selectedGenres) > 0 {
+				fmt.Println("  Genres:    ", strings.Join(selectedGenres, ", "))
+			} else {
+				fmt.Println("  Genres:     all")
+			}
+			if len(selectedSubgenres) > 0 {
+				fmt.Println("  Subgenres: ", strings.Join(selectedSubgenres, ", "))
+			} else {
+				fmt.Println("  Subgenres:  all")
+			}
+			if len(selectedArtists) > 0 {
+				fmt.Println("  Artists:   ", strings.Join(selectedArtists, ", "))
+			} else {
+				fmt.Println("  Artists:    all")
+			}
+			dateRange := "all time"
+			if dateFrom != "" && dateTo != "" {
+				dateRange = dateFrom + " → " + dateTo
+			} else if dateFrom != "" {
+				dateRange = dateFrom + " → present"
+			} else if dateTo != "" {
+				dateRange = "up to " + dateTo
+			}
+			fmt.Println("  Dates:     ", dateRange)
+
+			fmt.Print("\nStart download? (y/n/b to go back): ")
+			ans := strings.ToLower(strings.TrimSpace(GetLine()))
+			if ans == "b" {
+				step = stepDateTo
+				continue
+			}
+			if ans != "y" {
+				fmt.Println("Cancelled.")
+				return
+			}
+			app.urls = append(app.urls, rawURL)
+			return
+		}
+	}
 }
 
-// selectFromList prints a numbered list and returns the names the user chose.
-// Returns nil (no filter) if user presses Enter; returns all if user types *.
-func selectFromList(heading string, entries []rankEntry) []string {
+// selectFromList prints a numbered list and returns the names the user chose plus a back flag.
+// Returns nil (no filter) if user presses Enter; all entries if user types *; back=true if user types b.
+func selectFromList(heading string, entries []rankEntry) ([]string, bool) {
 	if len(entries) == 0 {
-		return nil
+		return nil, false
 	}
 	fmt.Printf("%s found:\n", heading)
 	for i, e := range entries {
 		fmt.Printf("  %2d. %-42s %d tracks\n", i+1, e.name, e.count)
 	}
-	fmt.Print("Select (e.g. 1,3  |  * for all  |  Enter to skip filter): ")
+	fmt.Print("Select (e.g. 1,3  |  * for all  |  Enter to skip  |  b to go back): ")
 	input := strings.TrimSpace(GetLine())
 
+	if input == "b" {
+		return nil, true
+	}
 	if input == "" {
-		return nil
+		return nil, false
 	}
 	if input == "*" {
 		names := make([]string, len(entries))
 		for i, e := range entries {
 			names[i] = e.name
 		}
-		return names
+		return names, false
 	}
 
 	var selected []string
@@ -225,7 +317,7 @@ func selectFromList(heading string, entries []rankEntry) []string {
 		}
 		selected = append(selected, entries[n-1].name)
 	}
-	return selected
+	return selected, false
 }
 
 // normaliseDateFrom accepts "1996", "1996-06", or "1996-06-01" and returns "YYYY-MM-DD" (start of period).
