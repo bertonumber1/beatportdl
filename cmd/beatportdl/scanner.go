@@ -105,10 +105,14 @@ func scanLabel(inst *beatport.Beatport, link *beatport.Link) (*scanStats, error)
 	err := ForPaginated[beatport.Release](link.ID, link.Params, inst.GetLabelReleases, func(release beatport.Release, _ int) error {
 		releaseCount++
 		fmt.Printf("\r  Scanning release %d — %d tracks found so far...", releaseCount, stats.total)
-		return ForPaginated[beatport.Track](release.ID, "", inst.GetReleaseTracks, func(track beatport.Track, _ int) error {
+		trackErr := ForPaginated[beatport.Track](release.ID, "", inst.GetReleaseTracks, func(track beatport.Track, _ int) error {
 			stats.add(&track)
 			return nil
 		})
+		if trackErr != nil && skippableReason(trackErr) != "" {
+			return nil
+		}
+		return trackErr
 	})
 	fmt.Println()
 	return stats, err
