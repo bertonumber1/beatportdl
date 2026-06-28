@@ -35,14 +35,14 @@ When you paste a **label or artist URL** at the prompt, the wizard automatically
 5. Shows a summary and asks to confirm before downloading
 
 ```
-Enter label/artist URL, search query, or label name: divucsa
+Enter label/artist URL, search query, or label name: crestwave
 
 [ Labels ]
-   1. Divucsa Music
+   1. Crestwave Records
 
 Enter result number(s): 1
 
-Scanning Divucsa Music — please wait...
+Scanning Crestwave Records — please wait...
   Scanning release 47 — 312 tracks found so far...
 
 Genres found:
@@ -285,7 +285,7 @@ Enter label/artist URL, search query, or label name:
 Paste a Beatport label URL (copy it from your browser while browsing a label page) or just type the label name:
 
 ```
-Enter label/artist URL, search query, or label name: divucsa
+Enter label/artist URL, search query, or label name: crestwave
 ```
 
 The wizard will:
