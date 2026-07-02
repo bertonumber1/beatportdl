@@ -119,8 +119,7 @@ involved.
 
 ## Notes on this rewrite
 
-- **One web UI, nothing to SSH in for.** Login, settings, queueing, filtering, and downloading
-  all happen in the browser.
+- **Everything happens in the browser** — login, settings, queueing, filtering, and downloading.
 - **Album/track art recheck** (Settings → Library maintenance) walks your downloads folder,
   finds tracks with missing or broken embedded artwork, and re-fetches + re-embeds it using the
   release ID now embedded in every download's tags (`BEATPORT_RELEASE_ID` / `BEATPORT_TRACK_ID`).
@@ -132,5 +131,5 @@ involved.
 - **Same skip logic** as the original: pre-release, territory-restricted, and generically
   unavailable (403/404) tracks are silently skipped and logged, both during download and during
   label scanning (a territory-restricted release doesn't abort the whole scan).
-- **Windows build restored** — a standalone `bpdl-web.exe`, built via PyInstaller in CI on every
-  release, no Python install required.
+- **Windows build available** — a standalone `bpdl-web.exe`, built via PyInstaller in CI on
+  every release, no Python install required.
