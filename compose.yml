@@ -1,21 +1,4 @@
 services:
-  bpdl:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: bpdl
-
-    network_mode: "container:gluetun"
-
-    stdin_open: true
-    tty: true
-
-    volumes:
-      - ./config:/config
-      - /mnt/usb-a/drive/downloads:/downloads
-
-    restart: "no"
-
   bpdl-web:
     build:
       context: .
