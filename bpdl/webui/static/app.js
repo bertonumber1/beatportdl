@@ -1,0 +1,544 @@
+"use strict";
+
+const $ = (sel) => document.querySelector(sel);
+const $$ = (sel) => Array.from(document.querySelectorAll(sel));
+
+const state = {
+  status: null,
+  queue: [],
+  wizardQueueIndex: null,
+  wizardScan: null, // {genres, subgenres, artists} rank entries with .selected
+  searchResults: [],
+  activity: new Map(), // track id -> card element
+  runCounts: { downloaded: 0, skipped: 0, failed: 0 },
+};
+
+// ---- tiny fetch helpers ----
+
+async function api(method, path, body) {
+  const resp = await fetch(path, {
+    method,
+    headers: body ? { "Content-Type": "application/json" } : undefined,
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const data = await resp.json().catch(() => ({}));
+  if (!resp.ok) {
+    throw new Error(data.detail || `request failed (${resp.status})`);
+  }
+  return data;
+}
+
+function initials(name) {
+  return (name || "?").trim().charAt(0).toUpperCase();
+}
+
+function hueFor(name) {
+  let h = 0;
+  for (const c of name || "") h = (h * 31 + c.charCodeAt(0)) % 360;
+  return h;
+}
+
+function artStyle(name, cover) {
+  if (cover) return `background-image:url('${cover}')`;
+  const h = hueFor(name);
+  return `background:linear-gradient(135deg, hsl(${h},55%,32%), hsl(${(h + 40) % 360},55%,20%))`;
+}
+
+function showToast(msg, kind) {
+  const el = $("#toast");
+  el.textContent = msg;
+  el.className = "toast" + (kind ? " " + kind : "");
+  el.classList.remove("hidden");
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(() => el.classList.add("hidden"), 3800);
+}
+
+// ---- top-level view state machine ----
+
+function render() {
+  const s = state.status;
+  if (!s) return;
+
+  $("#setup-panel").classList.toggle("hidden", s.configured);
+  $("#connecting-panel").classList.toggle("hidden", !s.configured || s.login_status === "ok");
+  $("#dashboard").classList.toggle("hidden", !(s.configured && s.login_status === "ok"));
+
+  const pill = $("#conn-status");
+  pill.className = "pill";
+  if (!s.configured) {
+    pill.classList.add("pending");
+    pill.querySelector(".label").textContent = "Setup needed";
+  } else if (s.login_status === "ok") {
+    pill.classList.add("ok");
+    pill.querySelector(".label").textContent = "Connected";
+  } else if (s.login_status === "error") {
+    pill.classList.add("error");
+    pill.querySelector(".label").textContent = "Connection failed";
+  } else {
+    pill.classList.add("connecting");
+    pill.querySelector(".label").textContent = "Connecting…";
+  }
+
+  if (s.configured && s.login_status !== "ok") {
+    $("#connecting-spinner").classList.toggle("hidden", s.login_status === "error");
+    $("#connecting-text").textContent =
+      s.login_status === "error" ? `Couldn't connect: ${s.login_error}` : "Connecting to Beatport…";
+    $("#retry-login-btn").classList.toggle("hidden", s.login_status !== "error");
+  }
+
+  renderQueue();
+}
+
+// ---- queue ----
+
+function renderQueue() {
+  const grid = $("#queue-grid");
+  grid.innerHTML = "";
+  $("#queue-count").textContent = state.queue.length;
+  $("#queue-empty").classList.toggle("hidden", state.queue.length > 0);
+  $("#start-btn").disabled = state.queue.length === 0 || state.status?.downloading;
+
+  state.queue.forEach((item, idx) => {
+    const card = document.createElement("div");
+    card.className = "card";
+    card.innerHTML = `
+      <div class="card-art" style="${artStyle(item.name, item.cover)}">${item.cover ? "" : initials(item.name)}</div>
+      <div class="card-body">
+        <div class="card-badge">${item.type.replace(/s$/, "")}${item.filters === undefined ? "" : item.filters ? " · filtered" : item.needs_wizard ? "" : " · unfiltered"}</div>
+        <div class="card-name" title="${item.name}">${item.name}</div>
+        <div class="card-subtitle" title="${item.subtitle}">${item.subtitle}</div>
+      </div>
+      ${item.needs_wizard === false && (item.type === "labels" || item.type === "artists") ? '<button class="card-edit" title="Edit filters">&#9998;</button>' : ""}
+      <button class="card-remove" title="Remove">&times;</button>
+    `;
+    card.querySelector(".card-remove").addEventListener("click", () => removeQueueItem(idx));
+    const editBtn = card.querySelector(".card-edit");
+    if (editBtn) editBtn.addEventListener("click", () => openWizard(idx, item.url));
+    grid.appendChild(card);
+  });
+}
+
+async function removeQueueItem(idx) {
+  const data = await api("DELETE", `/api/queue/${idx}`);
+  state.queue = data.queue;
+  renderQueue();
+}
+
+// ---- adding items ----
+
+async function handleAdd() {
+  const input = $("#url-input");
+  const raw = input.value.trim();
+  if (!raw) return;
+  $("#input-status").textContent = "Working…";
+  $("#input-status").classList.remove("err");
+  try {
+    const isUrl = raw.startsWith("https://www.beatport.com") || raw.startsWith("https://www.beatsource.com");
+    const data = await api("POST", "/api/queue", { input: raw });
+    if (isUrl) {
+      const item = data.added;
+      state.queue.push(item);
+      renderQueue();
+      input.value = "";
+      $("#input-status").textContent = `Added "${item.name}".`;
+      if (item.needs_wizard) openWizard(state.queue.length - 1, item.url);
+    } else {
+      state.searchResults = data.search_results || [];
+      openSearchModal();
+      $("#input-status").textContent = "";
+    }
+  } catch (e) {
+    $("#input-status").textContent = e.message;
+    $("#input-status").classList.add("err");
+  }
+}
+
+// ---- search modal ----
+
+function openSearchModal() {
+  const grid = $("#search-results-grid");
+  grid.innerHTML = "";
+  if (!state.searchResults.length) {
+    grid.innerHTML = '<p class="muted small">No results found.</p>';
+  }
+  state.searchResults.forEach((r, i) => {
+    const card = document.createElement("div");
+    card.className = "card";
+    card.dataset.idx = i;
+    card.innerHTML = `
+      <div class="card-art" style="${artStyle(r.name, r.cover)}">${r.cover ? "" : initials(r.name)}</div>
+      <div class="card-body">
+        <div class="card-badge">${r.kind}</div>
+        <div class="card-name" title="${r.name}">${r.name}</div>
+        <div class="card-subtitle" title="${r.subtitle}">${r.subtitle}</div>
+      </div>
+    `;
+    card.addEventListener("click", () => card.classList.toggle("selected"));
+    grid.appendChild(card);
+  });
+  $("#search-modal").classList.remove("hidden");
+}
+
+async function addSelectedSearchResults() {
+  const selected = $$("#search-results-grid .card.selected").map((c) => state.searchResults[Number(c.dataset.idx)]);
+  for (const r of selected) {
+    try {
+      const data = await api("POST", "/api/queue", { input: r.url });
+      const item = data.added;
+      state.queue.push(item);
+    } catch (e) {
+      showToast(`Failed to add "${r.name}": ${e.message}`, "error");
+    }
+  }
+  renderQueue();
+  $("#search-modal").classList.add("hidden");
+  if (selected.length) showToast(`Added ${selected.length} item(s) to queue.`, "success");
+}
+
+// ---- wizard ----
+
+function openWizard(queueIndex, url) {
+  state.wizardQueueIndex = queueIndex;
+  state.wizardScan = null;
+  $("#wizard-title").textContent = "Scanning…";
+  $("#wizard-scanning").classList.remove("hidden");
+  $("#wizard-results").classList.add("hidden");
+  $("#wizard-scan-status").textContent = "Starting scan — this can take a while for large catalogues…";
+  $("#wizard-modal").classList.remove("hidden");
+  $("#wizard-modal").dataset.url = url;
+  api("POST", "/api/scan", { url }).catch((e) => {
+    $("#wizard-scan-status").textContent = `Scan failed: ${e.message}`;
+  });
+}
+
+function chipList(container, entries, selectedSet) {
+  container.innerHTML = "";
+  const max = entries.length ? entries[0].count : 1;
+  entries.forEach((e) => {
+    const chip = document.createElement("div");
+    chip.className = "chip" + (selectedSet.has(e.name) ? " selected" : "");
+    chip.innerHTML = `<span>${e.name}</span><span class="chip-bar"><span class="chip-bar-fill" style="width:${Math.max(6, (e.count / max) * 100)}%"></span></span><span class="chip-count">${e.count}</span>`;
+    chip.addEventListener("click", () => {
+      chip.classList.toggle("selected");
+      if (selectedSet.has(e.name)) selectedSet.delete(e.name);
+      else selectedSet.add(e.name);
+    });
+    container.appendChild(chip);
+  });
+}
+
+function renderWizardResults(payload) {
+  state.wizardScan = {
+    genres: payload.genres,
+    subgenres: payload.subgenres,
+    artists: payload.artists,
+    selectedGenres: new Set(),
+    selectedSubgenres: new Set(),
+    selectedArtists: new Set(),
+  };
+  $("#wizard-title").textContent = "Filter this catalogue";
+  $("#wizard-scanning").classList.add("hidden");
+  $("#wizard-results").classList.remove("hidden");
+  const bpm = payload.bpm_max ? ` · BPM ${payload.bpm_min}–${payload.bpm_max}` : "";
+  $("#wizard-summary").textContent = `${payload.total} tracks scanned${bpm}. Select genres/subgenres/artists to keep — leave empty for "all".`;
+  chipList($("#wizard-genres"), payload.genres, state.wizardScan.selectedGenres);
+  chipList($("#wizard-subgenres"), payload.subgenres, state.wizardScan.selectedSubgenres);
+  chipList($("#wizard-artists"), payload.artists, state.wizardScan.selectedArtists);
+}
+
+async function confirmWizard(bypass) {
+  const idx = state.wizardQueueIndex;
+  if (idx === null) return;
+  const payload = bypass
+    ? { bypass: true }
+    : {
+        bypass: false,
+        genres: Array.from(state.wizardScan.selectedGenres),
+        subgenres: Array.from(state.wizardScan.selectedSubgenres),
+        artists: Array.from(state.wizardScan.selectedArtists),
+        date_from: $("#wizard-date-from").value,
+        date_to: $("#wizard-date-to").value,
+      };
+  const data = await api("POST", `/api/queue/${idx}/filters`, payload);
+  state.queue[idx] = data.item;
+  renderQueue();
+  $("#wizard-modal").classList.add("hidden");
+}
+
+// ---- activity / downloading ----
+
+function ensureActivityCard(id, name, artists, release, cover) {
+  if (state.activity.has(id)) return state.activity.get(id);
+  const card = document.createElement("div");
+  card.className = "card activity-card";
+  card.innerHTML = `
+    <div class="card-top">
+      <div class="card-art" style="${artStyle(name, cover)}">${cover ? "" : initials(name)}</div>
+      <div class="card-body">
+        <div class="card-name" title="${name}">${name}</div>
+        <div class="card-subtitle" title="${artists}">${artists}${release ? " — " + release : ""}</div>
+      </div>
+      <div class="status-icon"><span class="spinner"></span></div>
+    </div>
+    <div class="progress-track"><div class="progress-fill indeterminate"></div></div>
+  `;
+  $("#activity-grid").prepend(card);
+  state.activity.set(id, card);
+  return card;
+}
+
+function setStatusIcon(card, kind) {
+  const el = card.querySelector(".status-icon");
+  if (kind === "done") el.innerHTML = '<span class="check-icon">&#10003;</span>';
+  else if (kind === "error") el.innerHTML = '<span class="cross-icon">&#10007;</span>';
+  else if (kind === "skipped") el.innerHTML = '<span class="skip-icon">&#8213;</span>';
+}
+
+function updateRunStatsBar() {
+  const c = state.runCounts;
+  const total = c.downloaded + c.skipped + c.failed || 1;
+  $("#stat-downloaded").textContent = c.downloaded;
+  $("#stat-skipped").textContent = c.skipped;
+  $("#stat-failed").textContent = c.failed;
+  $("#stats-bar-ok").style.width = `${(c.downloaded / total) * 100}%`;
+  $("#stats-bar-warn").style.width = `${(c.skipped / total) * 100}%`;
+  $("#stats-bar-err").style.width = `${(c.failed / total) * 100}%`;
+}
+
+function handleTrackEvent(ev) {
+  $("#activity-section").classList.remove("hidden");
+  if (ev.type === "track_start") {
+    ensureActivityCard(ev.id, ev.name + (ev.mix_name ? ` (${ev.mix_name})` : ""), (ev.artists || []).join(", "), ev.release, ev.cover);
+    return;
+  }
+  const card = state.activity.get(ev.id);
+  if (!card) return;
+
+  if (ev.type === "track_progress") {
+    const fill = card.querySelector(".progress-fill");
+    if (ev.total > 0) {
+      fill.classList.remove("indeterminate");
+      fill.style.width = `${Math.min(100, (ev.downloaded / ev.total) * 100)}%`;
+    }
+  } else if (ev.type === "track_done") {
+    card.classList.add("done");
+    setStatusIcon(card, "done");
+    state.runCounts.downloaded++;
+    updateRunStatsBar();
+    fadeOutCard(ev.id, card);
+  } else if (ev.type === "track_skipped") {
+    card.classList.add("skipped");
+    setStatusIcon(card, "skipped");
+    state.runCounts.skipped++;
+    updateRunStatsBar();
+    fadeOutCard(ev.id, card);
+  } else if (ev.type === "track_error") {
+    card.classList.add("error");
+    setStatusIcon(card, "error");
+    state.runCounts.failed++;
+    updateRunStatsBar();
+    fadeOutCard(ev.id, card);
+  }
+}
+
+function fadeOutCard(id, card) {
+  setTimeout(() => {
+    card.classList.add("fading");
+    setTimeout(() => {
+      card.remove();
+      state.activity.delete(id);
+    }, 550);
+  }, 2200);
+}
+
+// ---- SSE ----
+
+function connectEvents() {
+  const es = new EventSource("/api/events");
+  es.onmessage = (msg) => {
+    let ev;
+    try {
+      ev = JSON.parse(msg.data);
+    } catch {
+      return;
+    }
+    handleEvent(ev);
+  };
+  es.onerror = () => {
+    // EventSource auto-reconnects; nothing to do.
+  };
+}
+
+function handleEvent(ev) {
+  switch (ev.type) {
+    case "login_status":
+      if (state.status) {
+        state.status.login_status = ev.status;
+        state.status.login_error = ev.error || "";
+      }
+      render();
+      break;
+    case "queue_updated":
+      state.queue = ev.queue;
+      renderQueue();
+      break;
+    case "scan_status":
+      $("#wizard-scan-status").textContent = ev.message;
+      break;
+    case "scan_error":
+      $("#wizard-scan-status").textContent = `Scan failed: ${ev.error}`;
+      break;
+    case "scan_done":
+      renderWizardResults(ev);
+      break;
+    case "batch_start":
+      state.runCounts = { downloaded: 0, skipped: 0, failed: 0 };
+      updateRunStatsBar();
+      $("#activity-section").classList.remove("hidden");
+      $("#activity-grid").innerHTML = "";
+      state.activity.clear();
+      if (state.status) state.status.downloading = true;
+      renderQueue();
+      break;
+    case "item_start":
+      showToast(`Starting "${ev.name}"…`);
+      break;
+    case "track_start":
+    case "track_progress":
+    case "track_done":
+    case "track_skipped":
+    case "track_error":
+      handleTrackEvent(ev);
+      break;
+    case "batch_done":
+      if (state.status) state.status.downloading = false;
+      state.queue = [];
+      renderQueue();
+      showToast(`Finished — ${ev.downloaded} downloaded, ${ev.skipped} skipped, ${ev.failed} failed.`, ev.failed ? "error" : "success");
+      break;
+    case "settings_saved":
+      break;
+    case "art_recheck_status":
+      $("#art-recheck-status").textContent = ev.message;
+      break;
+    case "art_recheck_error":
+      $("#art-recheck-status").textContent = `Failed: ${ev.error}`;
+      showToast(`Art recheck failed: ${ev.error}`, "error");
+      break;
+    case "art_recheck_done":
+      $("#art-recheck-status").textContent =
+        `Done — ${ev.files_fixed} file(s) fixed across ${ev.releases_fixed}/${ev.releases_checked} release(s). ` +
+        `${ev.already_ok} already had art, ${ev.no_id_tag} file(s) predate ID tagging, ${ev.failed} failed.`;
+      showToast(`Art recheck complete — ${ev.files_fixed} file(s) fixed.`, ev.failed ? "error" : "success");
+      break;
+  }
+}
+
+// ---- settings ----
+
+function fillForm(form, data) {
+  for (const el of form.elements) {
+    if (!el.name || !(el.name in data)) continue;
+    if (el.type === "checkbox") el.checked = !!data[el.name];
+    else el.value = data[el.name];
+  }
+}
+
+function formToPayload(form) {
+  const payload = {};
+  for (const el of form.elements) {
+    if (!el.name) continue;
+    if (el.type === "checkbox") payload[el.name] = el.checked;
+    else if (el.type === "number") payload[el.name] = el.value === "" ? null : Number(el.value);
+    else payload[el.name] = el.value;
+  }
+  return payload;
+}
+
+async function openSettingsModal() {
+  const data = await api("GET", "/api/settings");
+  fillForm($("#settings-form"), data);
+  $("#settings-modal").classList.remove("hidden");
+}
+
+async function saveSettingsModal() {
+  try {
+    await api("POST", "/api/settings", formToPayload($("#settings-form")));
+    $("#settings-modal").classList.add("hidden");
+    showToast("Settings saved.", "success");
+    await refreshStatus();
+  } catch (e) {
+    showToast(`Failed to save: ${e.message}`, "error");
+  }
+}
+
+async function submitSetupForm(e) {
+  e.preventDefault();
+  $("#setup-error").classList.add("hidden");
+  try {
+    await api("POST", "/api/settings", formToPayload($("#setup-form")));
+    await refreshStatus();
+  } catch (err) {
+    $("#setup-error").textContent = err.message;
+    $("#setup-error").classList.remove("hidden");
+  }
+}
+
+// ---- bootstrap ----
+
+async function refreshStatus() {
+  state.status = await api("GET", "/api/status");
+  state.queue = state.status.queue || [];
+  render();
+}
+
+function wireEvents() {
+  $("#add-btn").addEventListener("click", handleAdd);
+  $("#url-input").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") handleAdd();
+  });
+  $("#start-btn").addEventListener("click", async () => {
+    try {
+      await api("POST", "/api/download/start");
+    } catch (e) {
+      showToast(e.message, "error");
+    }
+  });
+  $("#clear-queue-btn").addEventListener("click", async () => {
+    const data = await api("POST", "/api/queue/clear");
+    state.queue = data.queue;
+    renderQueue();
+  });
+  $("#retry-login-btn").addEventListener("click", async () => {
+    try {
+      await api("POST", "/api/login/retry");
+      await refreshStatus();
+    } catch (e) {
+      showToast(e.message, "error");
+    }
+  });
+  $("#setup-form").addEventListener("submit", submitSetupForm);
+  $("#settings-btn").addEventListener("click", openSettingsModal);
+  $(".settings-close").addEventListener("click", () => $("#settings-modal").classList.add("hidden"));
+  $("#settings-save-btn").addEventListener("click", saveSettingsModal);
+  $(".search-close").addEventListener("click", () => $("#search-modal").classList.add("hidden"));
+  $("#search-add-btn").addEventListener("click", addSelectedSearchResults);
+  $(".wizard-close").addEventListener("click", () => $("#wizard-modal").classList.add("hidden"));
+  $("#wizard-bypass-btn").addEventListener("click", () => confirmWizard(true));
+  $("#wizard-confirm-btn").addEventListener("click", () => confirmWizard(false));
+  $("#recheck-art-btn").addEventListener("click", async () => {
+    $("#art-recheck-status").textContent = "Starting…";
+    try {
+      await api("POST", "/api/art/recheck", { only_missing: $("#art-only-missing").checked });
+    } catch (e) {
+      $("#art-recheck-status").textContent = e.message;
+    }
+  });
+}
+
+(async function main() {
+  wireEvents();
+  connectEvents();
+  await refreshStatus();
+  setInterval(refreshStatus, 8000); // cheap safety net alongside SSE
+})();

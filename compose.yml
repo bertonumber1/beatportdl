@@ -1,9 +1,9 @@
 services:
-  beatportdl-test:
+  bpdl:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: beatportdl-test
+    container_name: bpdl
 
     network_mode: "container:gluetun"
 
@@ -12,6 +12,21 @@ services:
 
     volumes:
       - ./config:/config
-      - /home/media/Desktop:/downloads
+      - /mnt/usb-a/drive/downloads:/downloads
 
     restart: "no"
+
+  bpdl-web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: bpdl-web
+    entrypoint: ["bpdl-web"]
+
+    network_mode: "container:gluetun"
+
+    volumes:
+      - ./config:/config
+      - /mnt/usb-a/drive/downloads:/downloads
+
+    restart: unless-stopped

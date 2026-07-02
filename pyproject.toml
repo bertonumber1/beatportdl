@@ -1,0 +1,29 @@
+[project]
+name = "beatportdl-webui"
+version = "2.0.0"
+description = "beatportdl-webui — Beatport/Beatsource downloader (TUI + web UI), Python rewrite dropping Go"
+requires-python = ">=3.10"
+dependencies = [
+    "requests>=2.31",
+    "pyyaml>=6.0",
+    "mutagen>=1.47",
+    "rich>=13.7",
+    "pyfiglet>=1.0",
+    "textual>=0.60",
+    "fastapi>=0.110",
+    "uvicorn>=0.29",
+]
+
+[project.scripts]
+bpdl = "bpdl.cli:main"
+bpdl-web = "bpdl.webui.server:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["bpdl*"]
+
+[tool.setuptools.package-data]
+"bpdl.webui" = ["static/*"]
