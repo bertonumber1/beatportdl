@@ -53,12 +53,24 @@ def recheck_art(
     by_release: dict[int, list[Path]] = {}
     no_id_tag = 0
     already_ok = 0
+    unreadable = 0
     for f in files:
-        release_id, _track_id = read_embedded_ids(str(f))
+        # The downloads directory may be shared with other tools/incomplete files —
+        # one unreadable/corrupt file must not abort the whole recheck run.
+        try:
+            release_id, _track_id = read_embedded_ids(str(f))
+        except Exception:
+            unreadable += 1
+            continue
         if not release_id:
             no_id_tag += 1
             continue
-        if only_missing and has_embedded_art(str(f)):
+        try:
+            has_art = has_embedded_art(str(f))
+        except Exception:
+            unreadable += 1
+            continue
+        if only_missing and has_art:
             already_ok += 1
             continue
         by_release.setdefault(release_id, []).append(f)
@@ -90,6 +102,7 @@ def recheck_art(
         "scanned_files": len(files),
         "already_ok": already_ok,
         "no_id_tag": no_id_tag,
+        "unreadable": unreadable,
         "releases_checked": total_releases,
         "releases_fixed": releases_fixed,
         "files_fixed": files_fixed,

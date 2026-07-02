@@ -74,14 +74,18 @@ def tag_track(location: str, track: Track, cover_path: str | None, cfg: AppConfi
 def _tag_flac(location: str, values: dict[str, str], cover_data: bytes | None, mapping: dict[str, str]) -> None:
     audio = FLAC(location)
     audio.clear()
-    audio.clear_pictures()
 
     for field, tag in mapping.items():
         value = values.get(field, "")
         if value:
             audio[tag] = value
 
+    # Only touch embedded pictures when we actually fetched a replacement — Beatport's
+    # FLAC stream already ships its own cover art, and clearing pictures unconditionally
+    # (regardless of whether cover_data is set) would silently strip it with nothing to
+    # replace it under default settings (lossless quality, default cover size).
     if cover_data:
+        audio.clear_pictures()
         pic = Picture()
         pic.type = 3
         pic.mime = "image/jpeg"
@@ -135,10 +139,13 @@ def _tag_m4a(location: str, values: dict[str, str], cover_data: bytes | None, ma
 
 def has_embedded_art(location: str) -> bool:
     ext = Path(location).suffix.lower()
-    if ext == ".flac":
-        return bool(FLAC(location).pictures)
-    if ext == ".m4a":
-        return bool(MP4(location).get("covr"))
+    try:
+        if ext == ".flac":
+            return bool(FLAC(location).pictures)
+        if ext == ".m4a":
+            return bool(MP4(location).get("covr"))
+    except Exception:
+        pass
     return False
 
 
@@ -160,7 +167,9 @@ def read_embedded_ids(location: str) -> tuple[int, int]:
             release_id = int(bytes(release_raw[0]).decode("utf-8")) if release_raw else 0
             track_id = int(bytes(track_raw[0]).decode("utf-8")) if track_raw else 0
             return release_id, track_id
-    except (ValueError, OSError):
+    except Exception:
+        # Best-effort: any unreadable/corrupt/non-audio file (the downloads directory
+        # may be shared with other tools) just means "no ID available", not a crash.
         pass
     return 0, 0
 
