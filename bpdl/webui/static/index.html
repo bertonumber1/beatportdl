@@ -1,0 +1,247 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0a0a0a">
+<title>BP-DL</title>
+<link rel="icon" href="/static/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/static/icon.svg">
+<link rel="manifest" href="/static/manifest.json">
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<div id="app">
+
+  <header id="topbar">
+    <div id="brand">
+      <span id="brand-mark">BP</span><span id="brand-rest">·DL</span>
+    </div>
+    <div id="topbar-right">
+      <div id="conn-status" class="pill pending">
+        <span class="dot"></span><span class="label">Starting…</span>
+      </div>
+      <img src="/static/icon-anarchy.svg" class="anarchy-mark" alt="" title="Smash-n-Grab's BP-DL">
+      <button id="settings-btn" class="icon-btn" title="Settings">&#9881;</button>
+    </div>
+  </header>
+
+  <main id="main">
+
+    <!-- First-run / incomplete config gate -->
+    <section id="setup-panel" class="panel hidden">
+      <h1>Let's get set up</h1>
+      <p class="muted">A few required settings before BP-DL can talk to Beatport / Beatsource.</p>
+      <form id="setup-form" class="settings-form">
+        <div class="field">
+          <label>Username</label>
+          <input name="username" type="text" required>
+        </div>
+        <div class="field">
+          <label>Password</label>
+          <input name="password" type="password" required>
+        </div>
+        <div class="field">
+          <label>Downloads directory</label>
+          <input name="downloads_directory" type="text" placeholder="/downloads" required>
+        </div>
+        <div class="field">
+          <label>Quality</label>
+          <select name="quality">
+            <option value="lossless">Lossless (FLAC)</option>
+            <option value="high">High (AAC 256kbps)</option>
+            <option value="medium">Medium (AAC 128kbps)</option>
+          </select>
+        </div>
+        <button type="submit" class="btn primary">Save &amp; connect</button>
+      </form>
+      <p id="setup-error" class="error-text hidden"></p>
+    </section>
+
+    <!-- Connecting / login error -->
+    <section id="connecting-panel" class="panel hidden">
+      <div id="connecting-spinner" class="spinner big"></div>
+      <p id="connecting-text">Connecting to Beatport…</p>
+      <button id="retry-login-btn" class="btn hidden">Retry connection</button>
+    </section>
+
+    <!-- Main dashboard -->
+    <section id="dashboard" class="hidden">
+
+      <div id="input-row">
+        <input id="url-input" type="text" placeholder="Paste a label / artist / track / release URL, or type a search query…" autocomplete="off">
+        <button id="add-btn" class="btn primary">Add</button>
+      </div>
+      <p id="input-status" class="muted small"></p>
+
+      <div class="section-head">
+        <h2>Queue <span id="queue-count" class="count-badge">0</span></h2>
+        <div class="section-actions">
+          <button id="clear-queue-btn" class="btn ghost small">Clear</button>
+          <button id="start-btn" class="btn success" disabled>Start downloading</button>
+        </div>
+      </div>
+      <div id="queue-grid" class="card-grid"></div>
+      <p id="queue-empty" class="muted small">Nothing queued yet — paste a URL above to get started.</p>
+
+      <div id="activity-section" class="hidden">
+        <div class="section-head">
+          <h2>Now downloading</h2>
+          <div id="run-stats">
+            <span class="stat ok"><b id="stat-downloaded">0</b> downloaded</span>
+            <span class="stat warn"><b id="stat-skipped">0</b> skipped</span>
+            <span class="stat err"><b id="stat-failed">0</b> failed</span>
+          </div>
+        </div>
+        <div id="stats-bar"><div id="stats-bar-ok"></div><div id="stats-bar-warn"></div><div id="stats-bar-err"></div></div>
+        <div id="activity-grid" class="card-grid"></div>
+      </div>
+
+    </section>
+
+  </main>
+
+  <!-- Wizard modal: scan progress + genre/subgenre/artist/date filter picker -->
+  <div id="wizard-modal" class="modal-backdrop hidden">
+    <div class="modal">
+      <div class="modal-head">
+        <h2 id="wizard-title">Scanning…</h2>
+        <button class="icon-btn wizard-close" title="Cancel">&times;</button>
+      </div>
+      <div id="wizard-scanning" class="modal-body">
+        <div class="spinner big"></div>
+        <p id="wizard-scan-status" class="muted">Starting scan…</p>
+      </div>
+      <div id="wizard-results" class="modal-body hidden">
+        <p class="muted small" id="wizard-summary"></p>
+        <div class="wizard-columns">
+          <div class="wizard-col">
+            <h3>Genres</h3>
+            <div id="wizard-genres" class="chip-list"></div>
+          </div>
+          <div class="wizard-col">
+            <h3>Subgenres</h3>
+            <div id="wizard-subgenres" class="chip-list"></div>
+          </div>
+          <div class="wizard-col">
+            <h3>Top artists</h3>
+            <div id="wizard-artists" class="chip-list"></div>
+          </div>
+        </div>
+        <div class="wizard-dates">
+          <div class="field">
+            <label>Published from</label>
+            <input id="wizard-date-from" type="date">
+          </div>
+          <div class="field">
+            <label>Published to</label>
+            <input id="wizard-date-to" type="date">
+          </div>
+        </div>
+        <div class="modal-actions">
+          <button id="wizard-bypass-btn" class="btn ghost">Queue everything (no filter)</button>
+          <button id="wizard-confirm-btn" class="btn success">Queue with filters</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Search results modal -->
+  <div id="search-modal" class="modal-backdrop hidden">
+    <div class="modal">
+      <div class="modal-head">
+        <h2>Search results</h2>
+        <button class="icon-btn search-close" title="Close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div id="search-results-grid" class="card-grid selectable"></div>
+        <div class="modal-actions">
+          <button id="search-add-btn" class="btn success">Add selected</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Settings modal (always reachable) -->
+  <div id="settings-modal" class="modal-backdrop hidden">
+    <div class="modal wide">
+      <div class="modal-head">
+        <h2>Settings</h2>
+        <button class="icon-btn settings-close" title="Close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <form id="settings-form" class="settings-form grid">
+          <div class="field"><label>Username</label><input name="username" type="text"></div>
+          <div class="field"><label>Password</label><input name="password" type="password"></div>
+          <div class="field"><label>Downloads directory</label><input name="downloads_directory" type="text"></div>
+          <div class="field">
+            <label>Quality</label>
+            <select name="quality">
+              <option value="lossless">Lossless (FLAC)</option>
+              <option value="high">High (AAC 256kbps)</option>
+              <option value="medium">Medium (AAC 128kbps)</option>
+            </select>
+          </div>
+          <div class="field"><label>Global workers</label><input name="max_global_workers" type="number" min="1" max="50"></div>
+          <div class="field"><label>Download workers</label><input name="max_download_workers" type="number" min="1" max="50"></div>
+          <div class="field">
+            <label>If track exists</label>
+            <select name="track_exists">
+              <option value="update">Update tags</option>
+              <option value="skip">Skip</option>
+              <option value="overwrite">Overwrite</option>
+              <option value="error">Error</option>
+            </select>
+          </div>
+          <div class="field"><label>Track number padding</label><input name="track_number_padding" type="number" min="0" max="10"></div>
+          <div class="field checkbox"><label><input name="sort_by_context" type="checkbox"> Sort into folders by label/release/artist</label></div>
+          <div class="field checkbox"><label><input name="sort_by_label" type="checkbox"> Group releases under label folders</label></div>
+          <div class="field checkbox"><label><input name="force_release_directories" type="checkbox"> Force per-release folders in playlists/charts</label></div>
+          <div class="field checkbox"><label><input name="fix_tags" type="checkbox"> Fix/normalize tags after download</label></div>
+          <div class="field checkbox"><label><input name="keep_cover" type="checkbox"> Keep cover.jpg in release folders</label></div>
+          <div class="field"><label>Release folder template</label><input name="release_directory_template" type="text"></div>
+          <div class="field"><label>Label folder template</label><input name="label_directory_template" type="text"></div>
+          <div class="field"><label>Artist folder template</label><input name="artist_directory_template" type="text"></div>
+          <div class="field"><label>Playlist folder template</label><input name="playlist_directory_template" type="text"></div>
+          <div class="field"><label>Chart folder template</label><input name="chart_directory_template" type="text"></div>
+          <div class="field"><label>Track filename template</label><input name="track_file_template" type="text"></div>
+          <div class="field"><label>Artists limit</label><input name="artists_limit" type="number" min="0" max="20"></div>
+          <div class="field"><label>Various-artists label</label><input name="artists_short_form" type="text"></div>
+          <div class="field">
+            <label>Key display</label>
+            <select name="key_system">
+              <option value="standard-short">Standard (short)</option>
+              <option value="standard">Standard</option>
+              <option value="openkey">Open Key</option>
+              <option value="camelot">Camelot</option>
+            </select>
+          </div>
+          <div class="field"><label>Cover size</label><input name="cover_size" type="text"></div>
+          <div class="field"><label>Proxy (optional)</label><input name="proxy" type="text"></div>
+        </form>
+        <p id="settings-error" class="error-text hidden"></p>
+        <div class="modal-actions">
+          <button id="settings-save-btn" class="btn success">Save settings</button>
+        </div>
+
+        <div class="maintenance-section">
+          <h3>Library maintenance</h3>
+          <label class="field checkbox">
+            <input id="art-only-missing" type="checkbox" checked>
+            Only fix tracks missing art (uncheck to refresh every cover)
+          </label>
+          <div class="modal-actions" style="justify-content:flex-start;margin-top:10px;">
+            <button id="recheck-art-btn" class="btn ghost">Recheck downloaded album &amp; track art</button>
+          </div>
+          <p id="art-recheck-status" class="muted small"></p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast hidden"></div>
+
+</div>
+<script src="/static/app.js"></script>
+</body>
+</html>

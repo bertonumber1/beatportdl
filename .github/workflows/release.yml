@@ -1,0 +1,95 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  windows-build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install package + build deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install .
+          pip install pyinstaller
+
+      - name: Build bpdl.exe (TUI / CLI)
+        run: >
+          pyinstaller --onefile --name bpdl
+          --collect-all textual --collect-all rich
+          scripts/win_bpdl.py
+
+      - name: Build bpdl-web.exe (web UI)
+        run: >
+          pyinstaller --onefile --name bpdl-web
+          --collect-all fastapi --collect-all starlette --collect-all uvicorn
+          --add-data "bpdl/webui/static;bpdl/webui/static"
+          scripts/win_bpdl_web.py
+
+      - name: Stage Windows release bundle
+        run: |
+          mkdir dist\windows-bundle
+          copy dist\bpdl.exe dist\windows-bundle\
+          copy dist\bpdl-web.exe dist\windows-bundle\
+          copy README.md dist\windows-bundle\
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: beatportdl-webui-windows-x64
+          path: dist/windows-bundle/**
+
+  docker-multiarch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-qemu-action@v3
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build & push multi-arch image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/beatportdl-webui:latest
+            ghcr.io/${{ github.repository_owner }}/beatportdl-webui:${{ github.ref_name }}
+
+  github-release:
+    needs: [windows-build, docker-multiarch]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: beatportdl-webui-windows-x64
+          path: windows-bundle
+
+      - name: Zip Windows bundle
+        run: cd windows-bundle && zip -r ../beatportdl-webui-windows-x64.zip .
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: beatportdl-webui-windows-x64.zip
+          generate_release_notes: true
