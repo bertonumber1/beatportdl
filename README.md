@@ -13,6 +13,16 @@ filtering), delivered two ways:
 Runs on Linux (amd64/arm64), Windows, and macOS. Docker images are multi-arch
 (`linux/amd64` + `linux/arm64`).
 
+## Screenshots (web UI)
+
+| Queue | Filter wizard |
+|---|---|
+| ![Queue](screenshots/queue.png) | ![Filter wizard](screenshots/filter-wizard.png) |
+
+| Scanning a label | Live downloads |
+|---|---|
+| ![Scanning](screenshots/scanning.png) | ![Now downloading](screenshots/now-downloading.png) |
+
 ## What changed vs. the original Go version
 
 - **Two interfaces, one engine** — `bpdl` (TUI/CLI) and `bpdl-web` (browser dashboard) share
