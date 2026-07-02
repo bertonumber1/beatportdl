@@ -26,12 +26,6 @@ jobs:
           pip install .
           pip install pyinstaller
 
-      - name: Build bpdl.exe (TUI / CLI)
-        run: >
-          pyinstaller --onefile --name bpdl
-          --collect-all textual --collect-all rich
-          scripts/win_bpdl.py
-
       - name: Build bpdl-web.exe (web UI)
         run: >
           pyinstaller --onefile --name bpdl-web
@@ -42,7 +36,6 @@ jobs:
       - name: Stage Windows release bundle
         run: |
           mkdir dist\windows-bundle
-          copy dist\bpdl.exe dist\windows-bundle\
           copy dist\bpdl-web.exe dist\windows-bundle\
           copy README.md dist\windows-bundle\
 

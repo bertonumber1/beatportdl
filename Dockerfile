@@ -10,4 +10,5 @@ RUN pip install --no-cache-dir .
 USER bpdl
 WORKDIR /config
 
-ENTRYPOINT ["bpdl"]
+EXPOSE 8095
+ENTRYPOINT ["bpdl-web"]

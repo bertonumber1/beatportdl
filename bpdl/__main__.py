@@ -1,4 +1,4 @@
-from bpdl.cli import main
+from bpdl.webui.server import main
 
 if __name__ == "__main__":
     main()
