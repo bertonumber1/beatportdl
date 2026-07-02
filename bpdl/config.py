@@ -85,6 +85,9 @@ _DEFAULTS = dict(
     keep_cover=False,
     fix_tags=True,
     proxy="",
+    skip_previously_downloaded=True,
+    watch_interval_hours=6,
+    notify_webhook_url="",
 )
 
 
@@ -135,6 +138,17 @@ class AppConfig:
     filter_publish_date_from: str = ""
     filter_publish_date_to: str = ""
 
+    skip_previously_downloaded: bool = True
+
+    watched_labels: list[dict] = field(default_factory=list)
+    watch_interval_hours: int = 6
+
+    # Generic outbound notification hook — a plain HTTP POST, so it works with
+    # Discord/Slack incoming webhooks, ntfy.sh, Gotify (URL includes its own
+    # token query param), or any custom bot listening for a JSON POST. See
+    # bpdl/notify.py for the exact payload shape.
+    notify_webhook_url: str = ""
+
 
 def _validate_tag_mappings(mappings: dict) -> None:
     for fmt, fields in mappings.items():
@@ -184,6 +198,10 @@ def parse(file_path: str | Path) -> AppConfig:
         filter_artists=raw.get("filter_artists") or [],
         filter_publish_date_from=raw.get("filter_publish_date_from", ""),
         filter_publish_date_to=raw.get("filter_publish_date_to", ""),
+        skip_previously_downloaded=merged["skip_previously_downloaded"],
+        watched_labels=raw.get("watched_labels") or [],
+        watch_interval_hours=merged["watch_interval_hours"],
+        notify_webhook_url=merged["notify_webhook_url"],
     )
 
     if not cfg.username or not cfg.password:
@@ -242,6 +260,10 @@ def save(cfg: AppConfig, file_path: str | Path) -> None:
         "keep_cover": cfg.keep_cover,
         "fix_tags": cfg.fix_tags,
         "proxy": cfg.proxy,
+        "skip_previously_downloaded": cfg.skip_previously_downloaded,
+        "watched_labels": cfg.watched_labels,
+        "watch_interval_hours": cfg.watch_interval_hours,
+        "notify_webhook_url": cfg.notify_webhook_url,
     }
     with open(path, "w") as f:
         yaml.safe_dump(data, f, default_flow_style=False, sort_keys=False)

@@ -6,6 +6,7 @@ from pathlib import Path
 
 from rich.console import Console
 
+from bpdl import history
 from bpdl.api import BeatportClient
 from bpdl.config import AppConfig
 from bpdl.download import (
@@ -37,6 +38,13 @@ class App:
         # Optional sink for structured progress events (used by the web UI's SSE
         # stream). None in normal CLI/TUI use, where rich console.print is enough.
         self.on_event = on_event
+        self.cancelled = threading.Event()
+
+    def cancel(self) -> None:
+        """Cooperative cancellation: stops new work from being submitted/started.
+        Tracks already mid-download will still finish that single file (no hard
+        kill mid-write), but nothing further will start."""
+        self.cancelled.set()
 
     def shutdown(self) -> None:
         self.global_pool.shutdown(wait=True, cancel_futures=True)
@@ -85,7 +93,18 @@ class App:
                 pass
 
     def _handle_track(self, client: BeatportClient, track, downloads_dir: str, cover: str | None) -> None:
+        if self.cancelled.is_set():
+            return
         track_key = str(track.id)
+        subgenre = track.subgenre.name if track.subgenre else ""
+        artists_str = ", ".join(a.get("name", "") for a in track.artists)
+
+        if self.cfg.skip_previously_downloaded and history.is_track_downloaded(track.id):
+            if self.on_event:
+                self.on_event({"type": "track_skipped", "id": track_key, "reason": "already downloaded", "url": track.store_url()})
+            self.stats.add_skipped("already downloaded")
+            return
+
         if self.on_event:
             self.on_event({
                 "type": "track_start",
@@ -102,21 +121,43 @@ class App:
             if self.on_event:
                 self.on_event({"type": "track_progress", "id": track_key, "downloaded": downloaded, "total": total})
 
+        def _record(status: str, location: str = "", reason: str = "") -> None:
+            try:
+                size_bytes = 0
+                if location:
+                    try:
+                        size_bytes = Path(location).stat().st_size
+                    except OSError:
+                        pass
+                history.record(
+                    track_id=track.id, release_id=track.release.id, store=track.store,
+                    track_name=track.name, artists=artists_str, release_name=track.release.name,
+                    label=track.release.label.name, genre=track.genre.name, subgenre=subgenre,
+                    bpm=track.bpm, key=track.key.display(self.cfg.key_system), quality=self.cfg.quality,
+                    file_path=location, file_size_bytes=size_bytes, status=status, reason=reason,
+                )
+            except Exception:
+                pass  # history is best-effort — never let it break a real download
+
         try:
-            handle_track(
+            location = handle_track(
                 client, track, downloads_dir, cover, self.cfg, self.active_files, self.active_files_lock,
                 on_progress=_progress,
             )
             self.stats.add_downloaded()
+            _record(history.STATUS_DOWNLOADED, location=location or "")
             if self.on_event:
-                self.on_event({"type": "track_done", "id": track_key})
+                self.on_event({"type": "track_done", "id": track_key, "location": location or ""})
         except Exception as e:
+            reason = skippable_reason(e)
+            _record(history.STATUS_SKIPPED if reason else history.STATUS_FAILED, reason=reason or str(e))
             if self.on_event:
-                reason = skippable_reason(e)
                 self.on_event({
                     "type": "track_skipped" if reason else "track_error",
                     "id": track_key,
+                    "name": f"{track.name} ({track.mix_name})" if track.mix_name else track.name,
                     "reason": reason or str(e),
+                    "url": track.store_url(),
                 })
             self._skip_or_error(track.store_url(), "handle track", e)
 
@@ -207,6 +248,8 @@ class App:
         downloads_dir = self._setup_downloads_dir(self.cfg.downloads_directory, label, "label")
 
         def on_release(release, _i):
+            if self.cancelled.is_set():
+                return
             self.global_pool.submit(self._handle_label_release, client, release, downloads_dir)
 
         try:
@@ -215,6 +258,8 @@ class App:
             self._log_error(link.original, "handle label releases", e)
 
     def _handle_label_release(self, client: BeatportClient, release, downloads_dir: str) -> None:
+        if self.cancelled.is_set():
+            return
         release_dir = self._setup_downloads_dir(downloads_dir, release, "release")
         cover = None
         if require_cover(self.cfg, True, True):
@@ -226,6 +271,8 @@ class App:
         futures = []
 
         def on_track(track, _i):
+            if self.cancelled.is_set():
+                return
             if not track_matches_filter(track, self.cfg):
                 console.print(f"[yellow][{track.store_url()}][/yellow] skipped (filter)")
                 self.stats.add_skipped("filter")
@@ -264,6 +311,8 @@ class App:
         futures = []
 
         def on_track(track, _i):
+            if self.cancelled.is_set():
+                return
             if not track_matches_filter(track, self.cfg):
                 console.print(f"[yellow][{track.store_url()}][/yellow] skipped (filter)")
                 self.stats.add_skipped("filter")
@@ -311,6 +360,8 @@ class App:
         futures = []
 
         def on_item(item, _i):
+            if self.cancelled.is_set():
+                return
             futures.append(self.download_pool.submit(self._handle_playlist_item, client, item, downloads_dir))
 
         try:
@@ -367,6 +418,8 @@ class App:
         futures = []
 
         def on_track(track, _i):
+            if self.cancelled.is_set():
+                return
             futures.append(self.download_pool.submit(self._handle_playlist_item, client, {"track": track}, downloads_dir))
 
         try:

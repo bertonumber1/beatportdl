@@ -212,11 +212,12 @@ def handle_track(
     active_files: set,
     active_files_lock,
     on_progress=None,
-) -> None:
+) -> str | None:
     location = save_track(client, track, downloads_dir, cfg, active_files, active_files_lock, on_progress=on_progress)
     if not location:
-        return
+        return None
     tag_track(location, track, cover_path, cfg)
+    return location
 
 
 def track_matches_filter(track: Track, cfg: AppConfig) -> bool:
