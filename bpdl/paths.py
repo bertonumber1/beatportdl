@@ -7,6 +7,7 @@ from pathlib import Path
 CONFIG_FILENAME = "bpdl-config.yml"
 CACHE_FILENAME = "bpdl-credentials.json"
 ERROR_LOG_FILENAME = "bpdl-err.log"
+HISTORY_FILENAME = "bpdl-history.sqlite3"
 
 
 def _executable_dir() -> Path:
@@ -52,3 +53,12 @@ def find_cache_file() -> tuple[Path, bool]:
 
 def find_error_log_file() -> tuple[Path, bool]:
     return _find(ERROR_LOG_FILENAME, [])
+
+
+def find_history_file() -> tuple[Path, bool]:
+    extra_dirs = []
+    if sys.platform.startswith("linux"):
+        xdg = os.environ.get("XDG_STATE_HOME")
+        base = Path(xdg) if xdg else Path.home() / ".local" / "state"
+        extra_dirs.append(base / "bpdl")
+    return _find(HISTORY_FILENAME, extra_dirs)

@@ -26,11 +26,57 @@ body {
   color: var(--text);
   font-family: var(--font);
   min-height: 100vh;
+  overflow-x: hidden;
 }
 
 .hidden { display: none !important; }
 
 #app { max-width: 1180px; margin: 0 auto; padding: 0 24px 64px; }
+
+/* ---- hero ---- */
+#hero {
+  position: relative;
+  display: flex; flex-direction: column; align-items: center;
+  padding: 48px 24px 28px;
+  overflow: hidden;
+  animation: hero-in .5s ease-out;
+}
+#hero-glow {
+  position: absolute; top: -40%; left: 50%; transform: translateX(-50%);
+  width: 900px; height: 480px;
+  background: radial-gradient(ellipse at center, rgba(88,166,255,0.16) 0%, rgba(88,166,255,0.05) 40%, transparent 70%);
+  pointer-events: none;
+}
+#hero-logo {
+  position: relative;
+  margin: 0; text-align: center;
+  font-size: 56px; font-weight: 800; letter-spacing: -1px;
+  color: var(--accent);
+  text-shadow: 0 0 40px rgba(88,166,255,0.45), 0 0 80px rgba(88,166,255,0.2), 0 4px 0 rgba(0,0,0,0.5);
+}
+#hero-tagline {
+  position: relative;
+  margin: 14px 0 0; color: var(--muted); font-size: 14px; letter-spacing: 0.5px;
+}
+#hero-badges {
+  position: relative;
+  margin-top: 16px; display: flex; align-items: center; gap: 10px;
+  padding: 6px 14px; border-radius: 999px; border: 1px solid var(--border-light);
+  background: var(--surface);
+}
+.hero-badge-icon { width: 22px; height: 22px; border-radius: 4px; object-fit: cover; }
+.hero-badge-icon.hero-flag { width: 28px; height: 18px; border-radius: 3px; }
+.hero-badge-text { font-size: 12.5px; color: var(--muted); font-weight: 600; letter-spacing: 0.3px; }
+
+@keyframes hero-in {
+  from { opacity: 0; transform: translateY(-8px); }
+  to { opacity: 1; transform: none; }
+}
+
+@media (max-width: 640px) {
+  #hero { padding: 32px 16px 20px; }
+  #hero-logo { font-size: 34px; }
+}
 
 /* ---- topbar ---- */
 #topbar {
@@ -69,6 +115,47 @@ body {
 
 .anarchy-mark { width: 24px; height: 24px; opacity: 0.8; transition: opacity .15s, transform .15s; }
 .anarchy-mark:hover { opacity: 1; transform: rotate(-8deg); }
+
+/* Decorative art in the dead margin space on wide screens. Width is a clamp
+   that shrinks to fit whatever margin actually exists beyond #app's own edge
+   (50% + half its max-width + a 16px gap) — by construction the far edge
+   always lands exactly at the viewport edge, so it can never overlap #app's
+   content, and it scales down gracefully on moderate-width screens (1440p
+   laptops) instead of only appearing on ultra-wide (1500px+) displays. Pirate
+   (right) appears while a download is actively running, as if watching the
+   haul come in; anarchy art (left) sits as constant ambient branding. */
+#side-mascot {
+  position: fixed;
+  left: calc(50% + 606px);
+  bottom: 0;
+  width: clamp(90px, calc((100vw - 1180px) / 2 - 16px), 240px);
+  opacity: 0;
+  pointer-events: none;
+  filter: drop-shadow(0 -10px 30px rgba(88,166,255,0.1)) drop-shadow(0 6px 16px rgba(0,0,0,0.6));
+  transition: opacity .5s ease, transform .5s ease;
+  transform: translateY(24px);
+  z-index: 1;
+}
+#side-mascot.visible { opacity: 0.92; transform: translateY(0); }
+
+#side-anarchy {
+  position: fixed;
+  right: calc(50% + 606px);
+  top: 50%;
+  transform: translateY(-50%);
+  width: clamp(90px, calc((100vw - 1180px) / 2 - 16px), 220px);
+  border-radius: 16px;
+  opacity: 0.5;
+  pointer-events: none;
+  filter: drop-shadow(0 10px 24px rgba(0,0,0,0.6));
+  z-index: 1;
+}
+
+/* Below this, there's under 90px of real margin either side of #app — not
+   enough to show anything without crowding the content. */
+@media (max-width: 1400px) {
+  #side-mascot, #side-anarchy { display: none; }
+}
 
 /* ---- panels ---- */
 .panel {
@@ -112,6 +199,8 @@ input:focus, select:focus {
 .btn.success { border-color: var(--success); color: var(--success); }
 .btn.success:hover:not(:disabled) { background: var(--success-dim); }
 .btn.ghost { background: transparent; color: var(--muted); }
+.btn.danger { border-color: var(--error); color: var(--error); }
+.btn.danger:hover:not(:disabled) { background: var(--error-dim); }
 .btn.small { padding: 6px 12px; font-size: 13px; }
 
 .error-text { color: var(--error); font-size: 13px; margin-top: 10px; }
@@ -204,6 +293,8 @@ input:focus, select:focus {
   height: 6px; border-radius: 4px; overflow: hidden; display: flex;
   background: var(--surface-2); margin-bottom: 18px;
 }
+#retry-failed-btn { margin: 0 0 16px; border-color: var(--error); color: var(--error); }
+#retry-failed-btn:hover { background: var(--error-dim); }
 #stats-bar-ok { background: var(--success); width: 0; transition: width .3s; }
 #stats-bar-warn { background: var(--warn); width: 0; transition: width .3s; }
 #stats-bar-err { background: var(--error); width: 0; transition: width .3s; }
@@ -272,6 +363,28 @@ input:focus, select:focus {
 
 .wizard-dates { display: flex; gap: 14px; margin-top: 18px; }
 .wizard-dates .field { flex: 1; }
+
+/* ---- stats ---- */
+.stats-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 12px; margin-bottom: 24px; }
+.stats-tile {
+  background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px;
+  padding: 14px 16px; text-align: center;
+}
+.stats-tile .stats-tile-value { font-size: 24px; font-weight: 700; color: var(--accent); font-variant-numeric: tabular-nums; }
+.stats-tile .stats-tile-label { font-size: 11.5px; color: var(--muted); margin-top: 4px; text-transform: uppercase; letter-spacing: 0.4px; }
+
+.stats-columns { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin: 20px 0; }
+.stats-col h3 { font-size: 12.5px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--muted); margin: 0 0 10px; }
+
+#stats-modal h3 { font-size: 12.5px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--muted); margin: 20px 0 10px; }
+
+.stats-timeline { display: flex; flex-direction: column; gap: 6px; }
+.stats-timeline .chip { cursor: default; }
+.stats-timeline .chip:hover { border-color: var(--border); }
+
+@media (max-width: 640px) {
+  .stats-columns { grid-template-columns: 1fr; }
+}
 
 .toast {
   position: fixed; bottom: 26px; left: 50%; transform: translateX(-50%);

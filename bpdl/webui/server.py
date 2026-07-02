@@ -4,7 +4,9 @@ import asyncio
 import json
 import queue
 import threading
+import time
 from contextlib import asynccontextmanager
+from datetime import date, datetime, timezone
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
@@ -13,6 +15,8 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from bpdl import config as config_module
+from bpdl import history
+from bpdl import notify
 from bpdl import paths
 from bpdl.api import BeatportClient
 from bpdl.artcheck import recheck_art
@@ -28,7 +32,7 @@ from bpdl.links import (
     TRACK_LINK,
     parse_url,
 )
-from bpdl.scanner import rank_map, scan_artist, scan_label
+from bpdl.scanner import for_paginated, rank_map, scan_artist, scan_label
 from bpdl.search import extract_store_tag
 
 STATIC_DIR = Path(__file__).parent / "static"
@@ -47,6 +51,9 @@ class State:
         self.login_error: str = ""
         self.queue: list[dict] = []
         self.downloading: bool = False
+        self.watch_checking: bool = False
+        self.current_run: App | None = None
+        self.stop_requested: bool = False
 
 
 state = State()
@@ -93,11 +100,23 @@ def _login_background() -> None:
         bus.publish({"type": "login_status", "status": "error", "error": str(e)})
 
 
+def _init_history_background() -> None:
+    try:
+        history.init_db()
+        if state.cfg.downloads_directory:
+            result = history.backfill_from_disk(state.cfg.downloads_directory)
+            bus.publish({"type": "history_backfill_done", **result})
+    except Exception as e:
+        bus.publish({"type": "history_backfill_error", "error": str(e)})
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     _load_config()
+    threading.Thread(target=_init_history_background, daemon=True).start()
     if _configured():
         threading.Thread(target=_login_background, daemon=True).start()
+    threading.Thread(target=_watch_scheduler_loop, daemon=True).start()
     yield
 
 
@@ -163,6 +182,10 @@ def _cfg_dict(cfg: config_module.AppConfig) -> dict:
         "keep_cover": cfg.keep_cover,
         "fix_tags": cfg.fix_tags,
         "proxy": cfg.proxy,
+        "skip_previously_downloaded": cfg.skip_previously_downloaded,
+        "watched_labels": cfg.watched_labels,
+        "watch_interval_hours": cfg.watch_interval_hours,
+        "notify_webhook_url": cfg.notify_webhook_url,
     }
 
 
@@ -192,6 +215,9 @@ class SettingsPayload(BaseModel):
     keep_cover: bool | None = None
     fix_tags: bool | None = None
     proxy: str | None = None
+    skip_previously_downloaded: bool | None = None
+    watch_interval_hours: int | None = None
+    notify_webhook_url: str | None = None
 
 
 @app.get("/api/settings")
@@ -408,33 +434,69 @@ def _apply_filters(filters: dict | None) -> None:
 
 def _run_download() -> None:
     state.downloading = True
+    state.stop_requested = False
     items = list(state.queue)
     bus.publish({"type": "batch_start", "count": len(items)})
 
     total_downloaded = total_skipped = total_failed = 0
+    failed_tracks: list[dict] = []
+    stopped_early = False
+    processed = 0
+
+    def on_event(ev: dict) -> None:
+        if ev.get("type") == "track_error" and ev.get("url"):
+            failed_tracks.append({"url": ev["url"], "name": ev.get("name") or ev.get("id", "")})
+        bus.publish(ev)
+
     for item in items:
+        if state.stop_requested:
+            stopped_early = True
+            break
+
         bus.publish({"type": "item_start", "url": item["url"], "name": item["name"], "cover": item.get("cover", "")})
         _apply_filters(item.get("filters"))
 
-        run = App(state.cfg, state.bp, state.bs, on_event=bus.publish)
+        run = App(state.cfg, state.bp, state.bs, on_event=on_event)
+        state.current_run = run
         try:
             run.handle_url(item["url"])
         finally:
             run.shutdown()
+            state.current_run = None
 
         total_downloaded += run.stats.downloaded
         total_skipped += sum(run.stats.skipped.values())
         total_failed += run.stats.failed
         bus.publish({"type": "item_done", "url": item["url"]})
+        processed += 1
 
-    state.queue.clear()
+    # Whatever's left in the queue when stopped (including the interrupted item)
+    # stays queued — a stop cancels the in-progress run, not the intent to
+    # eventually download the rest.
+    if stopped_early:
+        state.queue = items[processed:]
+    else:
+        state.queue.clear()
     state.downloading = False
+    state.stop_requested = False
     bus.publish({
         "type": "batch_done",
         "downloaded": total_downloaded,
         "skipped": total_skipped,
         "failed": total_failed,
+        "failed_tracks": failed_tracks,
+        "stopped": stopped_early,
     })
+
+
+@app.post("/api/download/stop")
+def stop_download() -> dict:
+    if not state.downloading:
+        raise HTTPException(400, "nothing is downloading")
+    state.stop_requested = True
+    if state.current_run:
+        state.current_run.cancel()
+    return {"stopping": True}
 
 
 @app.post("/api/download/start")
@@ -446,6 +508,189 @@ def start_download() -> dict:
         raise HTTPException(400, "queue is empty")
     threading.Thread(target=_run_download, daemon=True).start()
     return {"started": True}
+
+
+# ---- watch-list -----------------------------------------------------------------
+
+class WatchAddPayload(BaseModel):
+    url: str
+
+
+@app.get("/api/watch")
+def list_watch() -> dict:
+    labels = []
+    for entry in state.cfg.watched_labels:
+        pending = history.get_all_pending(entry["url"])
+        labels.append({**entry, "pending_releases": pending})
+    return {"watched_labels": labels, "interval_hours": state.cfg.watch_interval_hours}
+
+
+@app.post("/api/watch")
+def add_watch(payload: WatchAddPayload) -> dict:
+    _require_login()
+    try:
+        link = parse_url(payload.url)
+    except Exception as e:
+        raise HTTPException(400, f"Invalid URL: {e}") from e
+    if link.type != LABEL_LINK:
+        raise HTTPException(400, "watching only supports label URLs")
+    if any(w["url"] == payload.url for w in state.cfg.watched_labels):
+        raise HTTPException(400, "already watching this label")
+    client = _client_for(link.store)
+    try:
+        label = client.get_label(link.id)
+    except Exception as e:
+        raise HTTPException(400, f"Failed to fetch label: {e}") from e
+    # watched_since anchors what counts as "new" — only releases published on or
+    # after today count as genuinely new; the label's existing back-catalogue
+    # gets baselined (marked seen, not downloaded) the first time it's checked.
+    entry = {"url": payload.url, "name": label.name, "watched_since": datetime.now(timezone.utc).date().isoformat()}
+    state.cfg.watched_labels.append(entry)
+    config_module.save(state.cfg, state.config_path)
+    return {"watched_labels": state.cfg.watched_labels}
+
+
+@app.delete("/api/watch/{index}")
+def remove_watch(index: int) -> dict:
+    if 0 <= index < len(state.cfg.watched_labels):
+        state.cfg.watched_labels.pop(index)
+        config_module.save(state.cfg, state.config_path)
+    return {"watched_labels": state.cfg.watched_labels}
+
+
+@app.post("/api/watch/check-now")
+def watch_check_now() -> dict:
+    _require_login()
+    if state.watch_checking:
+        raise HTTPException(400, "a watch check is already running")
+    if not state.cfg.watched_labels:
+        raise HTTPException(400, "no watched labels configured")
+    threading.Thread(target=_run_watch_check, daemon=True).start()
+    return {"started": True}
+
+
+def _parse_release_date(raw: str) -> date | None:
+    try:
+        return date.fromisoformat(raw[:10])
+    except (ValueError, TypeError):
+        return None
+
+
+def _check_watched_label(entry: dict) -> dict:
+    try:
+        link = parse_url(entry["url"])
+    except Exception as e:
+        return {"new_releases": 0, "new_tracks": 0, "error": str(e)}
+    client = _client_for(link.store)
+    label_url = entry["url"]
+    watched_since = _parse_release_date(entry.get("watched_since", "")) or date.min
+    today = datetime.now(timezone.utc).date()
+
+    new_releases = []
+    newly_pending = []
+    try:
+        def on_release(release, _i):
+            if history.is_release_seen(release.id):
+                return
+            release_date = _parse_release_date(release.date)
+            if release_date is None:
+                # Can't tell how old it is — baseline it rather than guess-download.
+                history.mark_release_baseline(release.id, release.name, release.label.name)
+            elif release_date > today:
+                # Pre-release: not downloadable yet, track it and recheck each cycle.
+                history.add_pending_release(release.id, label_url, release.name, release_date.isoformat())
+                newly_pending.append(release)
+            elif release_date >= watched_since:
+                new_releases.append(release)
+            else:
+                # Existing catalogue that predates when we started watching this label.
+                history.mark_release_baseline(release.id, release.name, release.label.name)
+
+        for_paginated(link.id, "", client.get_label_releases, on_release)
+    except Exception as e:
+        return {"new_releases": 0, "new_tracks": 0, "error": str(e)}
+
+    # Pre-releases we were already tracking whose date has now arrived.
+    due = history.get_due_pending(label_url)
+    for row in due:
+        try:
+            release = client.get_release(row["release_id"])
+            new_releases.append(release)
+        except Exception:
+            pass
+        history.remove_pending(row["release_id"], label_url)
+
+    total_tracks = 0
+    if new_releases:
+        run = App(state.cfg, state.bp, state.bs, on_event=bus.publish)
+        for release in new_releases:
+            try:
+                run.handle_url(release.store_url())
+            except Exception:
+                pass
+        run.shutdown()
+        total_tracks = run.stats.downloaded
+
+    return {
+        "new_releases": len(new_releases),
+        "new_tracks": total_tracks,
+        "newly_pending": len(newly_pending),
+        "names": [r.name for r in new_releases],
+    }
+
+
+def _run_watch_check() -> None:
+    if state.watch_checking or state.downloading or state.login_status != "ok":
+        return
+    if not state.cfg.watched_labels:
+        return
+
+    state.watch_checking = True
+    bus.publish({"type": "watch_check_start", "count": len(state.cfg.watched_labels)})
+    summary_lines = []
+    total_new_releases = total_new_tracks = total_pending = 0
+    try:
+        for entry in state.cfg.watched_labels:
+            bus.publish({"type": "watch_check_status", "message": f"Checking {entry['name']}..."})
+            result = _check_watched_label(entry)
+            if result.get("new_releases"):
+                summary_lines.append(f"{entry['name']}: {result['new_releases']} new release(s), {result['new_tracks']} track(s)")
+                total_new_releases += result["new_releases"]
+                total_new_tracks += result["new_tracks"]
+            total_pending += result.get("newly_pending", 0)
+    finally:
+        state.watch_checking = False
+
+    bus.publish({
+        "type": "watch_check_done",
+        "new_releases": total_new_releases,
+        "new_tracks": total_new_tracks,
+        "newly_pending": total_pending,
+        "summary": summary_lines,
+    })
+    if summary_lines:
+        notify.send_notification(
+            state.cfg.notify_webhook_url,
+            "beatportdl-webui: new releases found",
+            "\n".join(summary_lines),
+        )
+
+
+def _watch_scheduler_loop() -> None:
+    while True:
+        interval_seconds = max(1, state.cfg.watch_interval_hours) * 3600
+        time.sleep(interval_seconds)
+        try:
+            _run_watch_check()
+        except Exception as e:
+            bus.publish({"type": "watch_check_error", "error": str(e)})
+
+
+# ---- stats -----------------------------------------------------------------
+
+@app.get("/api/stats")
+def get_stats() -> dict:
+    return history.get_stats()
 
 
 # ---- library maintenance -----------------------------------------------------------------

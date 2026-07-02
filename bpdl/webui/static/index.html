@@ -11,7 +11,21 @@
 <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
+<img id="side-mascot" src="/static/mascot-pirate.png" alt="" title="the crew, watching the haul come in">
+<img id="side-anarchy" src="/static/anarchy-art.jpg" alt="">
+
 <div id="app">
+
+  <div id="hero">
+    <div id="hero-glow"></div>
+    <h1 id="hero-logo">Smash-n-Grab</h1>
+    <p id="hero-tagline">Beatport / Beatsource downloader</p>
+    <div id="hero-badges">
+      <img src="/static/mascot-parrot.svg" class="hero-badge-icon" alt="" title="the crew">
+      <span class="hero-badge-text">Made in Scotland</span>
+      <img src="/static/flag-scotland.png" class="hero-badge-icon hero-flag" alt="Scotland flag">
+    </div>
+  </div>
 
   <header id="topbar">
     <div id="brand">
@@ -22,6 +36,7 @@
         <span class="dot"></span><span class="label">Starting…</span>
       </div>
       <img src="/static/icon-anarchy.svg" class="anarchy-mark" alt="" title="Smash-n-Grab's BP-DL">
+      <button id="stats-btn" class="icon-btn" title="Library stats">&#128202;</button>
       <button id="settings-btn" class="icon-btn" title="Settings">&#9881;</button>
     </div>
   </header>
@@ -78,6 +93,7 @@
         <h2>Queue <span id="queue-count" class="count-badge">0</span></h2>
         <div class="section-actions">
           <button id="clear-queue-btn" class="btn ghost small">Clear</button>
+          <button id="stop-btn" class="btn danger small hidden">Stop downloading</button>
           <button id="start-btn" class="btn success" disabled>Start downloading</button>
         </div>
       </div>
@@ -94,6 +110,7 @@
           </div>
         </div>
         <div id="stats-bar"><div id="stats-bar-ok"></div><div id="stats-bar-warn"></div><div id="stats-bar-err"></div></div>
+        <button id="retry-failed-btn" class="btn ghost small hidden">Retry failed</button>
         <div id="activity-grid" class="card-grid"></div>
       </div>
 
@@ -108,7 +125,14 @@
         <h2 id="wizard-title">Scanning…</h2>
         <button class="icon-btn wizard-close" title="Cancel">&times;</button>
       </div>
-      <div id="wizard-scanning" class="modal-body">
+      <div id="wizard-scope" class="modal-body">
+        <p class="muted" id="wizard-scope-name"></p>
+        <div class="modal-actions" style="justify-content:flex-start;flex-direction:column;align-items:stretch;gap:10px;">
+          <button id="wizard-scope-all-btn" class="btn success">Queue everything now</button>
+          <button id="wizard-scope-filter-btn" class="btn ghost">Filter first (scan catalogue)</button>
+        </div>
+      </div>
+      <div id="wizard-scanning" class="modal-body hidden">
         <div class="spinner big"></div>
         <p id="wizard-scan-status" class="muted">Starting scan…</p>
       </div>
@@ -199,6 +223,7 @@
           <div class="field checkbox"><label><input name="force_release_directories" type="checkbox"> Force per-release folders in playlists/charts</label></div>
           <div class="field checkbox"><label><input name="fix_tags" type="checkbox"> Fix/normalize tags after download</label></div>
           <div class="field checkbox"><label><input name="keep_cover" type="checkbox"> Keep cover.jpg in release folders</label></div>
+          <div class="field checkbox"><label><input name="skip_previously_downloaded" type="checkbox"> Skip tracks already downloaded before</label></div>
           <div class="field"><label>Release folder template</label><input name="release_directory_template" type="text"></div>
           <div class="field"><label>Label folder template</label><input name="label_directory_template" type="text"></div>
           <div class="field"><label>Artist folder template</label><input name="artist_directory_template" type="text"></div>
@@ -218,6 +243,8 @@
           </div>
           <div class="field"><label>Cover size</label><input name="cover_size" type="text"></div>
           <div class="field"><label>Proxy (optional)</label><input name="proxy" type="text"></div>
+          <div class="field"><label>Watch check interval (hours)</label><input name="watch_interval_hours" type="number" min="1" max="168"></div>
+          <div class="field"><label>Notification webhook URL (optional)</label><input name="notify_webhook_url" type="text" placeholder="https://discord.com/api/webhooks/..."></div>
         </form>
         <p id="settings-error" class="error-text hidden"></p>
         <div class="modal-actions">
@@ -235,6 +262,65 @@
           </div>
           <p id="art-recheck-status" class="muted small"></p>
         </div>
+
+        <div class="maintenance-section">
+          <h3>Watched labels</h3>
+          <p class="muted small">Automatically checks watched labels for new releases on the interval set above, downloads anything new, and fires the notification webhook if configured.</p>
+          <div id="watch-list" class="chip-list" style="max-height:160px;"></div>
+          <div class="watch-add-row" style="display:flex;gap:10px;margin-top:12px;">
+            <input id="watch-url-input" type="text" placeholder="Paste a label URL to watch..." style="flex:1;">
+            <button id="watch-add-btn" class="btn ghost">Watch</button>
+          </div>
+          <div class="modal-actions" style="justify-content:flex-start;margin-top:10px;">
+            <button id="watch-check-now-btn" class="btn ghost">Check now</button>
+          </div>
+          <p id="watch-status" class="muted small"></p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Stats modal: library-wide breakdown, "for nerds" -->
+  <div id="stats-modal" class="modal-backdrop hidden">
+    <div class="modal wide">
+      <div class="modal-head">
+        <h2>Library stats</h2>
+        <button class="icon-btn stats-close" title="Close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div id="stats-tiles" class="stats-tiles"></div>
+
+        <div class="stats-columns">
+          <div class="stats-col">
+            <h3>Top genres</h3>
+            <div id="stats-genres" class="chip-list"></div>
+          </div>
+          <div class="stats-col">
+            <h3>Top artists</h3>
+            <div id="stats-artists" class="chip-list"></div>
+          </div>
+          <div class="stats-col">
+            <h3>Top labels</h3>
+            <div id="stats-labels" class="chip-list"></div>
+          </div>
+        </div>
+
+        <div class="stats-columns">
+          <div class="stats-col">
+            <h3>BPM distribution</h3>
+            <div id="stats-bpm" class="chip-list"></div>
+          </div>
+          <div class="stats-col">
+            <h3>Key distribution</h3>
+            <div id="stats-keys" class="chip-list"></div>
+          </div>
+        </div>
+
+        <h3>Tracks downloaded per month</h3>
+        <div id="stats-activity" class="stats-timeline"></div>
+
+        <h3>Data downloaded per month</h3>
+        <div id="stats-volume" class="stats-timeline"></div>
       </div>
     </div>
   </div>
