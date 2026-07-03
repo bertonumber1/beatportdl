@@ -39,15 +39,41 @@ def rank_map(m: dict[str, int]) -> list[RankEntry]:
     return sorted((RankEntry(k, v) for k, v in m.items()), key=lambda e: (-e.count, e.name))
 
 
-def for_paginated(entity_id: int, params: str, fetch_page, process_item) -> None:
+def for_paginated(entity_id: int, params: str, fetch_page, process_item, should_stop=None) -> None:
+    """should_stop, if given, is checked before every page fetch — lets a long
+    walk be interrupted (e.g. on an explicit user Stop) instead of running to
+    natural completion or, in a worst case, forever (see sanitize_params: a
+    pasted URL with its own page=/per_page= query params can make the server
+    always re-serve the same page, so paginated.next never goes falsy)."""
     page = 1
     while True:
+        if should_stop and should_stop():
+            return
         paginated = fetch_page(entity_id, page, params)
         for i, item in enumerate(paginated.results):
             process_item(item, i)
         if not paginated.next:
             break
         page += 1
+
+
+def sanitize_params(params: str) -> str:
+    """Strips page/per_page from a URL's raw query string before it's forwarded
+    into our own paginated requests. link.params comes straight from whatever
+    query string a pasted URL happened to have — if that includes page=/
+    per_page= (e.g. copy-pasted from a scrolled Beatport catalogue page), it
+    collides with our own page={page} in the constructed request URL. Django
+    QueryDict.get() resolves a repeated key to the LAST occurrence, so that
+    stale page= value silently wins over ours every time — pagination gets
+    stuck re-serving the same page forever, and paginated.next never goes
+    falsy because the server thinks it already served the "current" page."""
+    if not params:
+        return params
+    from urllib.parse import parse_qsl, urlencode
+
+    pairs = parse_qsl(params, keep_blank_values=True)
+    filtered = [(k, v) for k, v in pairs if k not in ("page", "per_page")]
+    return urlencode(filtered)
 
 
 def scan_label(client: BeatportClient, link: Link, on_progress=None) -> ScanStats:
@@ -73,7 +99,7 @@ def scan_label(client: BeatportClient, link: Link, on_progress=None) -> ScanStat
             if not skippable_reason(e):
                 raise
 
-    for_paginated(link.id, link.params, client.get_label_releases, on_release)
+    for_paginated(link.id, sanitize_params(link.params), client.get_label_releases, on_release)
     return stats
 
 
@@ -85,5 +111,5 @@ def scan_artist(client: BeatportClient, link: Link, on_progress=None) -> ScanSta
         if on_progress:
             on_progress(f"{stats.total} tracks scanned...")
 
-    for_paginated(link.id, link.params, client.get_artist_tracks, on_track)
+    for_paginated(link.id, sanitize_params(link.params), client.get_artist_tracks, on_track)
     return stats

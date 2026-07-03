@@ -20,7 +20,7 @@ from bpdl.download import (
 )
 from bpdl.links import ARTIST_LINK, CHART_LINK, LABEL_LINK, PLAYLIST_LINK, RELEASE_LINK, TRACK_LINK, Link, parse_url
 from bpdl.models import NamingPreferences
-from bpdl.scanner import for_paginated
+from bpdl.scanner import for_paginated, sanitize_params
 
 console = Console()
 
@@ -268,7 +268,10 @@ class App:
             self.global_pool.submit(self._handle_label_release, client, release, downloads_dir)
 
         try:
-            for_paginated(link.id, link.params, client.get_label_releases, on_release)
+            for_paginated(
+                link.id, sanitize_params(link.params), client.get_label_releases, on_release,
+                should_stop=self.cancelled.is_set,
+            )
         except Exception as e:
             self._log_error(link.original, "handle label releases", e)
 
@@ -295,7 +298,7 @@ class App:
             futures.append(self.download_pool.submit(self._fetch_and_handle_track, client, track, release, release_dir, cover))
 
         try:
-            for_paginated(release.id, "", client.get_release_tracks, on_track)
+            for_paginated(release.id, "", client.get_release_tracks, on_track, should_stop=self.cancelled.is_set)
         except Exception as e:
             self._log_error(release.store_url(), "handle release tracks", e)
             return
@@ -335,7 +338,10 @@ class App:
             futures.append(self.download_pool.submit(self._handle_artist_track, client, track, downloads_dir))
 
         try:
-            for_paginated(link.id, link.params, client.get_artist_tracks, on_track)
+            for_paginated(
+                link.id, sanitize_params(link.params), client.get_artist_tracks, on_track,
+                should_stop=self.cancelled.is_set,
+            )
         except Exception as e:
             self._log_error(link.original, "handle artist tracks", e)
             return
@@ -380,7 +386,7 @@ class App:
             futures.append(self.download_pool.submit(self._handle_playlist_item, client, item, downloads_dir))
 
         try:
-            for_paginated(link.id, "", client.get_playlist_items, on_item)
+            for_paginated(link.id, "", client.get_playlist_items, on_item, should_stop=self.cancelled.is_set)
         except Exception as e:
             self._log_error(link.original, "handle playlist items", e)
             return
@@ -438,7 +444,7 @@ class App:
             futures.append(self.download_pool.submit(self._handle_playlist_item, client, {"track": track}, downloads_dir))
 
         try:
-            for_paginated(link.id, "", client.get_chart_tracks, on_track)
+            for_paginated(link.id, "", client.get_chart_tracks, on_track, should_stop=self.cancelled.is_set)
         except Exception as e:
             self._log_error(link.original, "handle chart tracks", e)
             return

@@ -32,7 +32,7 @@ from bpdl.links import (
     TRACK_LINK,
     parse_url,
 )
-from bpdl.scanner import for_paginated, rank_map, scan_artist, scan_label
+from bpdl.scanner import for_paginated, rank_map, sanitize_params, scan_artist, scan_label
 from bpdl.search import extract_store_tag
 
 STATIC_DIR = Path(__file__).parent / "static"
@@ -389,12 +389,13 @@ def peek(payload: PeekPayload) -> dict:
     except Exception as e:
         raise HTTPException(400, str(e)) from e
     client = _client_for(link.store)
+    params = sanitize_params(link.params)
     try:
         if link.type == LABEL_LINK:
-            page = client.get_label_releases(link.id, 1, link.params)
+            page = client.get_label_releases(link.id, 1, params)
             return {"count": page.count, "kind": "releases"}
         if link.type == ARTIST_LINK:
-            page = client.get_artist_tracks(link.id, 1, link.params)
+            page = client.get_artist_tracks(link.id, 1, params)
             return {"count": page.count, "kind": "tracks"}
     except Exception as e:
         raise HTTPException(400, f"Failed to check size: {e}") from e
