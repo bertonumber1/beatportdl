@@ -140,32 +140,6 @@ body::before {
 .anarchy-mark { width: 24px; height: 24px; opacity: 0.8; transition: opacity .15s, transform .15s; }
 .anarchy-mark:hover { opacity: 1; transform: rotate(-8deg); }
 
-/* Decorative art in the dead margin space on wide screens. Width is a clamp
-   that shrinks to fit whatever margin actually exists beyond #app's own edge
-   (50% + half its max-width + a 16px gap) — by construction the far edge
-   always lands exactly at the viewport edge, so it can never overlap #app's
-   content, and it scales down gracefully on moderate-width screens (1440p
-   laptops) instead of only appearing on ultra-wide (1500px+) displays.
-   Anarchy art (left) sits as constant ambient branding. */
-#side-anarchy {
-  position: fixed;
-  right: calc(50% + 606px);
-  top: 50%;
-  transform: translateY(-50%);
-  width: clamp(90px, calc((100vw - 1180px) / 2 - 16px), 220px);
-  border-radius: 16px;
-  opacity: 0.5;
-  pointer-events: none;
-  filter: drop-shadow(0 10px 24px rgba(0,0,0,0.6));
-  z-index: 1;
-}
-
-/* Below this, there's under 90px of real margin either side of #app — not
-   enough to show anything without crowding the content. */
-@media (max-width: 1400px) {
-  #side-anarchy { display: none; }
-}
-
 /* ---- panels ---- */
 .panel {
   max-width: 480px; margin: 60px auto; text-align: center;
