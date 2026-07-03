@@ -10,3 +10,8 @@ config/bpdl-config.yml
 config/bpdl-credentials.json
 bpdl-credentials.json
 bpdl-err.log
+
+bpdl-history.sqlite3
+config/bpdl-history.sqlite3
+bpdl-config.yml
+.pytest_cache/

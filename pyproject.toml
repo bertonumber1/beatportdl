@@ -12,6 +12,9 @@ dependencies = [
     "uvicorn>=0.29",
 ]
 
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+
 [project.scripts]
 bpdl-web = "bpdl.webui.server:main"
 

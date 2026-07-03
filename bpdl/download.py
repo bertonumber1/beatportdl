@@ -108,7 +108,9 @@ def download_file(url: str, destination: str, on_progress=None) -> None:
     except BaseException:
         Path(tmp_path).unlink(missing_ok=True)
         raise
-    Path(tmp_path).rename(destination)
+    # replace(), not rename(): with track_exists="overwrite" the destination may
+    # already exist, and rename() refuses to overwrite on Windows.
+    Path(tmp_path).replace(destination)
 
 
 def download_cover(image_url: str, downloads_dir: str) -> str:
@@ -125,7 +127,9 @@ def handle_cover_file(path: str, cfg: AppConfig) -> None:
     if not path:
         return
     if cfg.keep_cover and cfg.sort_by_context:
-        Path(path).rename(Path(path).parent / "cover.jpg")
+        # replace(): a re-download into the same directory already has a
+        # cover.jpg, and rename() refuses to overwrite on Windows.
+        Path(path).replace(Path(path).parent / "cover.jpg")
     else:
         Path(path).unlink(missing_ok=True)
 
@@ -167,28 +171,37 @@ def save_track(
     filename = track.filename(naming)
     file_path = f"{directory}/{filename}{ext}"
 
-    if Path(file_path).exists():
-        with active_files_lock:
-            already_active = file_path in active_files
-        if already_active:
+    # The whole claim decision happens under one lock so that two workers racing
+    # on the same target filename (duplicate track names in one run) can never
+    # both start writing the same .part file — the reservation must be checked
+    # even when the file isn't on disk yet, since the first worker may still be
+    # mid-download.
+    update_tags_only = False
+    with active_files_lock:
+        if file_path in active_files:
             i = 1
             while True:
                 candidate = f"{directory}/{filename} ({i}){ext}"
-                if not Path(candidate).exists():
+                if candidate not in active_files and not Path(candidate).exists():
                     file_path = candidate
                     break
                 i += 1
-        else:
+            active_files.add(file_path)
+        elif Path(file_path).exists():
             if cfg.track_exists == "skip":
                 return None
             if cfg.track_exists == "update":
-                console.print(f"[dim][{track.store_url()}][/dim] updating tags")
-                return file_path
-            if cfg.track_exists == "error":
+                update_tags_only = True
+            elif cfg.track_exists == "error":
                 raise TrackFileExistsError(file_path)
+            else:  # overwrite
+                active_files.add(file_path)
+        else:
+            active_files.add(file_path)
 
-    with active_files_lock:
-        active_files.add(file_path)
+    if update_tags_only:
+        console.print(f"[dim][{track.store_url()}][/dim] updating tags")
+        return file_path
 
     info_display = f"{track.name} ({track.mix_name}) [{display_quality}]"
     console.print(f"Downloading {info_display}")
@@ -196,7 +209,11 @@ def save_track(
     try:
         download_file(download_info["location"], file_path, on_progress=on_progress)
     except BaseException:
-        Path(file_path).unlink(missing_ok=True)
+        # download_file() cleans up its own .part and only touches file_path on
+        # success — nothing to delete here. Unlinking file_path would actually
+        # destroy the pre-existing file in the track_exists="overwrite" case.
+        with active_files_lock:
+            active_files.discard(file_path)
         raise
 
     console.print(f"[green]Finished downloading[/green] {info_display}")
@@ -221,7 +238,13 @@ def handle_track(
 
 
 def track_matches_filter(track: Track, cfg: AppConfig) -> bool:
-    if not (cfg.filter_genres or cfg.filter_subgenres or cfg.filter_artists or cfg.filter_publish_date_from):
+    if not (
+        cfg.filter_genres
+        or cfg.filter_subgenres
+        or cfg.filter_artists
+        or cfg.filter_publish_date_from
+        or cfg.filter_publish_date_to
+    ):
         return True
 
     if cfg.filter_publish_date_from and track.publish_date < cfg.filter_publish_date_from:

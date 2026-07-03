@@ -231,7 +231,7 @@ def save_settings(payload: SettingsPayload) -> dict:
     for k, v in data.items():
         setattr(state.cfg, k, v)
     if not state.config_path:
-        _, _ = paths.find_config_file()
+        state.config_path, _ = paths.find_config_file()
     config_module.save(state.cfg, state.config_path)
     bus.publish({"type": "settings_saved"})
     if ("username" in data or "password" in data) and _configured():
@@ -477,45 +477,60 @@ def _run_download() -> None:
             failed_tracks.append({"url": ev["url"], "name": ev.get("name") or ev.get("id", "")})
         bus.publish(ev)
 
-    for item in items:
-        if state.stop_requested:
-            stopped_early = True
-            break
+    # The whole batch runs inside try/finally: this thread is the only thing
+    # that can ever reset state.downloading, so an exception escaping here
+    # would otherwise leave the UI permanently reporting "a download is
+    # already running" until the server restarts.
+    try:
+        for item in items:
+            if state.stop_requested:
+                stopped_early = True
+                break
 
-        bus.publish({"type": "item_start", "url": item["url"], "name": item["name"], "cover": item.get("cover", "")})
-        _apply_filters(item.get("filters"))
+            bus.publish({"type": "item_start", "url": item["url"], "name": item["name"], "cover": item.get("cover", "")})
+            _apply_filters(item.get("filters"))
 
-        run = App(state.cfg, state.bp, state.bs, on_event=on_event)
-        state.current_run = run
-        try:
-            run.handle_url(item["url"])
-        finally:
-            run.shutdown(cancel_pending=state.stop_requested)
-            state.current_run = None
+            run = App(state.cfg, state.bp, state.bs, on_event=on_event)
+            state.current_run = run
+            try:
+                # handle_url() catches per-track errors itself, but setup steps
+                # (e.g. mkdir on a bad/unwritable downloads directory) can still
+                # raise — count it against this item and move on to the next.
+                run.handle_url(item["url"])
+            except Exception as e:
+                run.stats.add_failed()
+                bus.publish({"type": "track_error", "id": item["url"], "name": item["name"], "reason": str(e), "url": item["url"]})
+                failed_tracks.append({"url": item["url"], "name": item["name"]})
+            finally:
+                run.shutdown(cancel_pending=state.stop_requested)
+                state.current_run = None
 
-        total_downloaded += run.stats.downloaded
-        total_skipped += sum(run.stats.skipped.values())
-        total_failed += run.stats.failed
-        bus.publish({"type": "item_done", "url": item["url"]})
-        processed += 1
-
-    # Whatever's left in the queue when stopped (including the interrupted item)
-    # stays queued — a stop cancels the in-progress run, not the intent to
-    # eventually download the rest.
-    if stopped_early:
-        state.queue = items[processed:]
-    else:
-        state.queue.clear()
-    state.downloading = False
-    state.stop_requested = False
-    bus.publish({
-        "type": "batch_done",
-        "downloaded": total_downloaded,
-        "skipped": total_skipped,
-        "failed": total_failed,
-        "failed_tracks": failed_tracks,
-        "stopped": stopped_early,
-    })
+            total_downloaded += run.stats.downloaded
+            total_skipped += sum(run.stats.skipped.values())
+            total_failed += run.stats.failed
+            bus.publish({"type": "item_done", "url": item["url"]})
+            processed += 1
+    finally:
+        # Whatever's left in the queue when stopped (including the interrupted item)
+        # stays queued — a stop cancels the in-progress run, not the intent to
+        # eventually download the rest.
+        if stopped_early:
+            state.queue = items[processed:]
+        else:
+            state.queue.clear()
+        # Per-item filters mutate the shared cfg — reset so a later watch-list
+        # check doesn't silently inherit the last queue item's filters.
+        _apply_filters(None)
+        state.downloading = False
+        state.stop_requested = False
+        bus.publish({
+            "type": "batch_done",
+            "downloaded": total_downloaded,
+            "skipped": total_skipped,
+            "failed": total_failed,
+            "failed_tracks": failed_tracks,
+            "stopped": stopped_early,
+        })
 
 
 @app.post("/api/download/stop")
@@ -675,6 +690,8 @@ def _run_watch_check() -> None:
         return
 
     state.watch_checking = True
+    # Watch downloads must never inherit filters left over from a queue item.
+    _apply_filters(None)
     bus.publish({"type": "watch_check_start", "count": len(state.cfg.watched_labels)})
     summary_lines = []
     total_new_releases = total_new_tracks = total_pending = 0
@@ -706,9 +723,16 @@ def _run_watch_check() -> None:
 
 
 def _watch_scheduler_loop() -> None:
+    # Sleep in one-minute slices instead of one interval-long sleep, so a
+    # changed watch_interval_hours setting takes effect on the next slice
+    # rather than only after the previous (possibly much longer) sleep ends.
+    slept = 0
     while True:
-        interval_seconds = max(1, state.cfg.watch_interval_hours) * 3600
-        time.sleep(interval_seconds)
+        time.sleep(60)
+        slept += 60
+        if slept < max(1, state.cfg.watch_interval_hours) * 3600:
+            continue
+        slept = 0
         try:
             _run_watch_check()
         except Exception as e:
