@@ -34,11 +34,13 @@ body {
   overflow-x: hidden;
 }
 
-/* Full-page skull-and-crossbones wallpaper. The source art is small (236x393),
-   so it's shown through a slight blur and a dark overlay — reads as ambient
-   texture instead of upscaling artifacts, and keeps text contrast intact.
-   The radial layer keeps the old subtle blue-grey glow at the top of the page.
-   scale(1.05) hides the blur's bright edge fringe at the viewport borders. */
+/* Full-page skull-and-crossbones wallpaper. The source art is small (236x393)
+   and portrait, so `contain` fits the whole figure inside the viewport (rather
+   than `cover` cropping its top/bottom on a landscape screen) — every feature
+   stays visible, centred, with the dark canvas filling the sides. Shown through
+   a slight blur and a dark overlay so it reads as ambient texture without
+   upscaling artifacts and keeps text contrast intact. The radial layer keeps
+   the old subtle blue-grey glow at the top of the page. */
 body::before {
   content: "";
   position: fixed;
@@ -47,9 +49,8 @@ body::before {
   background:
     radial-gradient(ellipse at top, rgba(16, 20, 24, 0.5) 0%, transparent 55%),
     linear-gradient(rgba(10, 10, 10, 0.72), rgba(10, 10, 10, 0.85)),
-    url("/static/wallpaper-pirate.jpg") center / cover no-repeat;
+    url("/static/wallpaper-pirate.jpg") center / contain no-repeat;
   filter: blur(3px) saturate(1.1);
-  transform: scale(1.05);
   pointer-events: none;
 }
 
