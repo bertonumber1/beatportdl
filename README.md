@@ -133,3 +133,9 @@ involved.
   label scanning (a territory-restricted release doesn't abort the whole scan).
 - **Windows build available** — a standalone `bpdl-web.exe`, built via PyInstaller in CI on
   every release, no Python install required.
+- **Large-catalogue downloads are verified end-to-end, not just build-tested.** An earlier
+  version silently truncated any label/artist bigger than the worker pool (`max_global_workers`)
+  because of an over-eager `ThreadPoolExecutor.shutdown(cancel_futures=True)`, and a separate bug
+  let a pasted URL with its own `page=`/`per_page=` query params send pagination into an
+  infinite loop. Both are fixed (`v2.2.0`) and confirmed against a real 250-release/253-track
+  label end to end: 253/253 downloaded, 0 skipped, 0 failed, matching real files on disk exactly.
