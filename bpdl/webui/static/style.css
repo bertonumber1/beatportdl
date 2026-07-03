@@ -34,23 +34,20 @@ body {
   overflow-x: hidden;
 }
 
-/* Full-page skull-and-crossbones wallpaper. The source art is small (236x393)
-   and portrait, so `contain` fits the whole figure inside the viewport (rather
-   than `cover` cropping its top/bottom on a landscape screen) — every feature
-   stays visible, centred, with the dark canvas filling the sides. Shown through
-   a slight blur and a dark overlay so it reads as ambient texture without
-   upscaling artifacts and keeps text contrast intact. The radial layer keeps
-   the old subtle blue-grey glow at the top of the page. */
+/* Full-page skull-and-crossbones wallpaper. The source art is a high-res
+   landscape flag (2400x1292), so `cover` fills the whole viewport sharply with
+   no blur needed. A dark gradient overlay sits on top so the app's text and
+   cards keep contrast while the flag still reads through clearly. The radial
+   layer keeps the old subtle blue-grey glow at the top of the page. */
 body::before {
   content: "";
   position: fixed;
   inset: 0;
   z-index: -1;
   background:
-    radial-gradient(ellipse at top, rgba(16, 20, 24, 0.5) 0%, transparent 55%),
-    linear-gradient(rgba(10, 10, 10, 0.72), rgba(10, 10, 10, 0.85)),
-    url("/static/wallpaper-pirate.jpg") center / contain no-repeat;
-  filter: blur(3px) saturate(1.1);
+    radial-gradient(ellipse at top, rgba(16, 20, 24, 0.45) 0%, transparent 55%),
+    linear-gradient(rgba(10, 10, 10, 0.55), rgba(10, 10, 10, 0.72)),
+    url("/static/wallpaper-pirate.jpg") center / cover no-repeat;
   pointer-events: none;
 }
 
