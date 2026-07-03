@@ -369,3 +369,73 @@ def get_stats() -> dict:
         "bytes_by_month": by_bucket(bytes_by_month, "month"),
         "bytes_by_year": by_bucket(bytes_by_year, "year"),
     }
+
+
+def verify_library() -> dict:
+    """Read-only check of every 'downloaded' row's file_path against disk. This
+    is informational only — it never deletes anything on its own. Users who
+    move files elsewhere after downloading will legitimately see many "missing"
+    entries here; that's expected for that workflow (dedup should still treat
+    those tracks as downloaded), not a sign of corruption. Users who keep a
+    stable library layout can use the count to spot real problems."""
+    with _lock, _connect() as conn:
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(
+            "SELECT id, track_id, track_name, artists, release_name, file_path "
+            "FROM downloads WHERE status = ?",
+            (STATUS_DOWNLOADED,),
+        ).fetchall()
+
+    missing = []
+    ok_count = 0
+    no_path_count = 0
+    for row in rows:
+        if not row["file_path"]:
+            no_path_count += 1
+            continue
+        if Path(row["file_path"]).exists():
+            ok_count += 1
+        else:
+            missing.append({
+                "id": row["id"], "track_id": row["track_id"], "track_name": row["track_name"],
+                "artists": row["artists"], "release_name": row["release_name"], "file_path": row["file_path"],
+            })
+
+    return {
+        "total_checked": len(rows),
+        "ok": ok_count,
+        "missing": len(missing),
+        "no_path_recorded": no_path_count,
+        "missing_sample": missing[:100],
+    }
+
+
+def remove_missing_entries() -> int:
+    """Opt-in cleanup for verify_library()'s 'missing' set — deletes downloaded
+    rows whose file_path no longer exists. Never called automatically; a user
+    on a stable-library workflow explicitly requests this after reviewing the
+    verify report. Never touches rows with an empty file_path (those predate
+    file-size tracking and shouldn't be judged missing just because we never
+    recorded where they went)."""
+    with _lock, _connect() as conn:
+        rows = conn.execute(
+            "SELECT id, file_path FROM downloads WHERE status = ? AND file_path != ''",
+            (STATUS_DOWNLOADED,),
+        ).fetchall()
+        missing_ids = [row[0] for row in rows if not Path(row[1]).exists()]
+        if missing_ids:
+            placeholders = ",".join("?" * len(missing_ids))
+            conn.execute(f"DELETE FROM downloads WHERE id IN ({placeholders})", missing_ids)
+        return len(missing_ids)
+
+
+def clear_all() -> int:
+    """Wipes the entire download history — for users who move files elsewhere
+    after downloading and want a clean dedup/stats slate rather than relying on
+    file-existence checks that will never match their workflow. Does not touch
+    pending_releases (watch-list pre-release tracking) since that's unrelated
+    to what's already been downloaded."""
+    with _lock, _connect() as conn:
+        cur = conn.execute("DELETE FROM downloads")
+        conn.commit()
+        return cur.rowcount

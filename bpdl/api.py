@@ -135,7 +135,11 @@ class BeatportClient:
         return Label.from_json(self._get(f"/catalog/labels/{label_id}/"), self.store)
 
     def search_labels(self, query: str) -> Paginated:
-        return self._paginated(f"/catalog/labels/?q={quote(query)}&order_by=name&per_page=10", Label)
+        # Beatport's /catalog/labels/ endpoint silently ignores q= (returns the
+        # entire ~360k-label catalogue unfiltered) — name= actually filters.
+        # Confirmed against the live API; the original Go tool used q= too, so
+        # this looks like a Beatport-side API change rather than a porting bug.
+        return self._paginated(f"/catalog/labels/?name={quote(query)}&order_by=name&per_page=10", Label)
 
     def get_label_releases(self, label_id: int, page: int, params: str = "") -> Paginated:
         return self._paginated(f"/catalog/labels/{label_id}/releases/?page={page}&{params}", Release)

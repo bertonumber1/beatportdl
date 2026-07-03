@@ -127,6 +127,12 @@
       </div>
       <div id="wizard-scope" class="modal-body">
         <p class="muted" id="wizard-scope-name"></p>
+        <p class="muted small" id="wizard-scope-size">Checking size…</p>
+        <div id="wizard-scope-warning" class="error-text hidden"></div>
+        <label class="field checkbox hidden" id="wizard-scope-confirm-row">
+          <input type="checkbox" id="wizard-scope-confirm-checkbox">
+          I understand this is a large catalogue and want to queue all of it anyway
+        </label>
         <div class="modal-actions" style="justify-content:flex-start;flex-direction:column;align-items:stretch;gap:10px;">
           <button id="wizard-scope-all-btn" class="btn success">Queue everything now</button>
           <button id="wizard-scope-filter-btn" class="btn ghost">Filter first (scan catalogue)</button>
@@ -261,6 +267,28 @@
             <button id="recheck-art-btn" class="btn ghost">Recheck downloaded album &amp; track art</button>
           </div>
           <p id="art-recheck-status" class="muted small"></p>
+        </div>
+
+        <div class="maintenance-section">
+          <h3>Download history</h3>
+          <p class="muted small">
+            "Verify library" checks whether each downloaded track's file still exists where it was
+            saved. If you move files elsewhere afterwards, missing entries here are expected and
+            fine — that's what keeps already-downloaded tracks from being re-downloaded. Only use
+            "Remove missing entries" if you keep files in place and want to clean up genuinely lost ones.
+          </p>
+          <div class="modal-actions" style="justify-content:flex-start;gap:10px;">
+            <button id="verify-library-btn" class="btn ghost">Verify library</button>
+            <button id="remove-missing-btn" class="btn ghost hidden">Remove missing entries</button>
+          </div>
+          <p id="verify-library-status" class="muted small"></p>
+
+          <div class="modal-actions" style="justify-content:flex-start;margin-top:16px;">
+            <button id="clear-history-btn" class="btn danger">Clear download history</button>
+          </div>
+          <p class="muted small">Wipes the entire history/dedup database. Use this after moving a
+            batch of downloads elsewhere if you want a clean slate — future downloads won't be
+            treated as duplicates of anything recorded before the clear.</p>
         </div>
 
         <div class="maintenance-section">
