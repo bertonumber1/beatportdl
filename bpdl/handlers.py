@@ -46,9 +46,15 @@ class App:
         kill mid-write), but nothing further will start."""
         self.cancelled.set()
 
-    def shutdown(self) -> None:
-        self.global_pool.shutdown(wait=True, cancel_futures=True)
-        self.download_pool.shutdown(wait=True, cancel_futures=True)
+    def shutdown(self, cancel_pending: bool = False) -> None:
+        """Waits for all submitted work to finish. cancel_pending=True additionally
+        drops anything still queued but not yet started — only appropriate right
+        after an explicit user Stop; the default (False) is required for a normal
+        completion, since a label/artist submits far more release/track tasks than
+        there are worker threads, and pending (not-yet-started) tasks are exactly
+        the bulk of a large catalogue's work, not leftover cruft to discard."""
+        self.global_pool.shutdown(wait=True, cancel_futures=cancel_pending)
+        self.download_pool.shutdown(wait=True, cancel_futures=cancel_pending)
 
     def _log_error(self, url: str, step: str, err: Exception) -> None:
         console.print(f"[red][{url}][/red] {step}: {err}")
@@ -144,10 +150,19 @@ class App:
                 client, track, downloads_dir, cover, self.cfg, self.active_files, self.active_files_lock,
                 on_progress=_progress,
             )
-            self.stats.add_downloaded()
-            _record(history.STATUS_DOWNLOADED, location=location or "")
-            if self.on_event:
-                self.on_event({"type": "track_done", "id": track_key, "location": location or ""})
+            if location:
+                self.stats.add_downloaded()
+                _record(history.STATUS_DOWNLOADED, location=location)
+                if self.on_event:
+                    self.on_event({"type": "track_done", "id": track_key, "location": location})
+            else:
+                # handle_track() returns None when save_track() found the destination
+                # file already on disk and track_exists=="skip" — nothing was actually
+                # downloaded or tagged, so this must never be recorded as a download.
+                self.stats.add_skipped("file exists")
+                _record(history.STATUS_SKIPPED, reason="file already exists (track_exists=skip)")
+                if self.on_event:
+                    self.on_event({"type": "track_skipped", "id": track_key, "reason": "file already exists", "url": track.store_url()})
         except Exception as e:
             reason = skippable_reason(e)
             _record(history.STATUS_SKIPPED if reason else history.STATUS_FAILED, reason=reason or str(e))

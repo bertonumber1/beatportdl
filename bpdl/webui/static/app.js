@@ -375,33 +375,43 @@ function handleTrackEvent(ev) {
     ensureActivityCard(ev.id, ev.name + (ev.mix_name ? ` (${ev.mix_name})` : ""), (ev.artists || []).join(", "), ev.release, ev.cover);
     return;
   }
+  // The card may already be gone (faded out + removed from the map) by the time
+  // a terminal event arrives for it — that must never drop the stat itself, only
+  // the now-pointless DOM update. Losing the count here is exactly how a client
+  // can under/mis-report totals that don't match the server's real numbers.
   const card = state.activity.get(ev.id);
-  if (!card) return;
 
   if (ev.type === "track_progress") {
+    if (!card) return;
     const fill = card.querySelector(".progress-fill");
     if (ev.total > 0) {
       fill.classList.remove("indeterminate");
       fill.style.width = `${Math.min(100, (ev.downloaded / ev.total) * 100)}%`;
     }
   } else if (ev.type === "track_done") {
-    card.classList.add("done");
-    setStatusIcon(card, "done");
     state.runCounts.downloaded++;
     updateRunStatsBar();
-    fadeOutCard(ev.id, card);
+    if (card) {
+      card.classList.add("done");
+      setStatusIcon(card, "done");
+      fadeOutCard(ev.id, card);
+    }
   } else if (ev.type === "track_skipped") {
-    card.classList.add("skipped");
-    setStatusIcon(card, "skipped");
     state.runCounts.skipped++;
     updateRunStatsBar();
-    fadeOutCard(ev.id, card);
+    if (card) {
+      card.classList.add("skipped");
+      setStatusIcon(card, "skipped");
+      fadeOutCard(ev.id, card);
+    }
   } else if (ev.type === "track_error") {
-    card.classList.add("error");
-    setStatusIcon(card, "error");
     state.runCounts.failed++;
     updateRunStatsBar();
-    fadeOutCard(ev.id, card);
+    if (card) {
+      card.classList.add("error");
+      setStatusIcon(card, "error");
+      fadeOutCard(ev.id, card);
+    }
   }
 }
 
