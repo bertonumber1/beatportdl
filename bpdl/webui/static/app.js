@@ -34,6 +34,13 @@ function initials(name) {
   return (name || "?").trim().charAt(0).toUpperCase();
 }
 
+// Track/release/artist names come from Beatport and routinely contain &, ", '
+// or < (think `Rock & Roll (12" Mix)`) — interpolating them raw into innerHTML
+// breaks title="..." attributes and card markup. Escape at every interpolation.
+function esc(s) {
+  return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+}
+
 function hueFor(name) {
   let h = 0;
   for (const c of name || "") h = (h * 31 + c.charCodeAt(0)) % 360;
@@ -41,7 +48,7 @@ function hueFor(name) {
 }
 
 function artStyle(name, cover) {
-  if (cover) return `background-image:url('${cover}')`;
+  if (cover) return `background-image:url('${esc(cover)}')`;
   const h = hueFor(name);
   return `background:linear-gradient(135deg, hsl(${h},55%,32%), hsl(${(h + 40) % 360},55%,20%))`;
 }
@@ -109,8 +116,8 @@ function renderQueue() {
       <div class="card-art" style="${artStyle(item.name, item.cover)}">${item.cover ? "" : initials(item.name)}</div>
       <div class="card-body">
         <div class="card-badge">${item.type.replace(/s$/, "")}${item.filters === undefined ? "" : item.filters ? " · filtered" : item.needs_wizard ? "" : " · unfiltered"}</div>
-        <div class="card-name" title="${item.name}">${item.name}</div>
-        <div class="card-subtitle" title="${item.subtitle}">${item.subtitle}</div>
+        <div class="card-name" title="${esc(item.name)}">${esc(item.name)}</div>
+        <div class="card-subtitle" title="${esc(item.subtitle)}">${esc(item.subtitle)}</div>
       </div>
       ${item.needs_wizard === false && (item.type === "labels" || item.type === "artists") ? '<button class="card-edit" title="Edit filters">&#9998;</button>' : ""}
       <button class="card-remove" title="Remove">&times;</button>
@@ -123,9 +130,13 @@ function renderQueue() {
 }
 
 async function removeQueueItem(idx) {
-  const data = await api("DELETE", `/api/queue/${idx}`);
-  state.queue = data.queue;
-  renderQueue();
+  try {
+    const data = await api("DELETE", `/api/queue/${idx}`);
+    state.queue = data.queue;
+    renderQueue();
+  } catch (e) {
+    showToast(`Failed to remove: ${e.message}`, "error");
+  }
 }
 
 // ---- adding items ----
@@ -172,9 +183,9 @@ function openSearchModal() {
     card.innerHTML = `
       <div class="card-art" style="${artStyle(r.name, r.cover)}">${r.cover ? "" : initials(r.name)}</div>
       <div class="card-body">
-        <div class="card-badge">${r.kind}</div>
-        <div class="card-name" title="${r.name}">${r.name}</div>
-        <div class="card-subtitle" title="${r.subtitle}">${r.subtitle}</div>
+        <div class="card-badge">${esc(r.kind)}</div>
+        <div class="card-name" title="${esc(r.name)}">${esc(r.name)}</div>
+        <div class="card-subtitle" title="${esc(r.subtitle)}">${esc(r.subtitle)}</div>
       </div>
     `;
     card.addEventListener("click", () => card.classList.toggle("selected"));
@@ -260,7 +271,7 @@ function chipList(container, entries, selectedSet) {
   entries.forEach((e) => {
     const chip = document.createElement("div");
     chip.className = "chip" + (selectedSet.has(e.name) ? " selected" : "");
-    chip.innerHTML = `<span>${e.name}</span><span class="chip-bar"><span class="chip-bar-fill" style="width:${Math.max(6, (e.count / max) * 100)}%"></span></span><span class="chip-count">${e.count}</span>`;
+    chip.innerHTML = `<span>${esc(e.name)}</span><span class="chip-bar"><span class="chip-bar-fill" style="width:${Math.max(6, (e.count / max) * 100)}%"></span></span><span class="chip-count">${e.count}</span>`;
     chip.addEventListener("click", () => {
       chip.classList.toggle("selected");
       if (selectedSet.has(e.name)) selectedSet.delete(e.name);
@@ -281,7 +292,7 @@ function renderStatBars(container, entries, labelKey, valueKey, formatValue) {
     const chip = document.createElement("div");
     chip.className = "chip";
     const value = formatValue ? formatValue(e[valueKey]) : e[valueKey];
-    chip.innerHTML = `<span>${e[labelKey]}</span><span class="chip-bar"><span class="chip-bar-fill" style="width:${Math.max(4, (e[valueKey] / max) * 100)}%"></span></span><span class="chip-count">${value}</span>`;
+    chip.innerHTML = `<span>${esc(e[labelKey])}</span><span class="chip-bar"><span class="chip-bar-fill" style="width:${Math.max(4, (e[valueKey] / max) * 100)}%"></span></span><span class="chip-count">${esc(value)}</span>`;
     container.appendChild(chip);
   });
 }
@@ -300,7 +311,13 @@ function formatBytes(n) {
 
 async function openStatsModal() {
   $("#stats-modal").classList.remove("hidden");
-  const stats = await api("GET", "/api/stats");
+  let stats;
+  try {
+    stats = await api("GET", "/api/stats");
+  } catch (e) {
+    $("#stats-tiles").innerHTML = `<p class="muted small">Failed to load stats: ${esc(e.message)}</p>`;
+    return;
+  }
 
   const tiles = $("#stats-tiles");
   tiles.innerHTML = `
@@ -368,8 +385,8 @@ function ensureActivityCard(id, name, artists, release, cover) {
     <div class="card-top">
       <div class="card-art" style="${artStyle(name, cover)}">${cover ? "" : initials(name)}</div>
       <div class="card-body">
-        <div class="card-name" title="${name}">${name}</div>
-        <div class="card-subtitle" title="${artists}">${artists}${release ? " — " + release : ""}</div>
+        <div class="card-name" title="${esc(name)}">${esc(name)}</div>
+        <div class="card-subtitle" title="${esc(artists)}">${esc(artists)}${release ? " — " + esc(release) : ""}</div>
       </div>
       <div class="status-icon"><span class="spinner"></span></div>
     </div>
@@ -614,9 +631,9 @@ function renderWatchList(entries) {
       : "";
     row.innerHTML = `
       <div style="display:flex;align-items:center;gap:8px;">
-        <span style="flex:1;">${w.name}</span>
+        <span style="flex:1;">${esc(w.name)}</span>
       </div>
-      ${pendingText ? `<span class="muted" style="font-size:11px;">${pendingText}</span>` : ""}
+      ${pendingText ? `<span class="muted" style="font-size:11px;">${esc(pendingText)}</span>` : ""}
     `;
     const removeBtn = document.createElement("button");
     removeBtn.className = "card-remove";
@@ -687,9 +704,13 @@ function wireEvents() {
     }
   });
   $("#clear-queue-btn").addEventListener("click", async () => {
-    const data = await api("POST", "/api/queue/clear");
-    state.queue = data.queue;
-    renderQueue();
+    try {
+      const data = await api("POST", "/api/queue/clear");
+      state.queue = data.queue;
+      renderQueue();
+    } catch (e) {
+      showToast(`Failed to clear queue: ${e.message}`, "error");
+    }
   });
   $("#retry-failed-btn").addEventListener("click", async () => {
     const tracks = state.failedTracks;
