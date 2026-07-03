@@ -3,6 +3,7 @@ from __future__ import annotations
 import sqlite3
 import threading
 from collections import Counter
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -34,8 +35,23 @@ def _connect() -> sqlite3.Connection:
     return conn
 
 
+@contextmanager
+def _db():
+    """Serialized access + commit + close. Note that sqlite3's own context
+    manager (`with conn:`) only commits/rolls back — it does NOT close the
+    connection, so using it bare leaks one open connection (plus WAL handles)
+    per call, and history is called once per downloaded track."""
+    with _lock:
+        conn = _connect()
+        try:
+            with conn:
+                yield conn
+        finally:
+            conn.close()
+
+
 def init_db() -> None:
-    with _lock, _connect() as conn:
+    with _db() as conn:
         conn.execute("""
             CREATE TABLE IF NOT EXISTS downloads (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -100,7 +116,7 @@ def record(
     reason: str = "",
     file_size_bytes: int = 0,
 ) -> None:
-    with _lock, _connect() as conn:
+    with _db() as conn:
         conn.execute(
             """INSERT INTO downloads
                (track_id, release_id, store, track_name, artists, release_name, label,
@@ -118,7 +134,7 @@ def record(
 def is_track_downloaded(track_id: int) -> bool:
     if not track_id:
         return False
-    with _lock, _connect() as conn:
+    with _db() as conn:
         row = conn.execute(
             "SELECT 1 FROM downloads WHERE track_id = ? AND status = ? LIMIT 1",
             (track_id, STATUS_DOWNLOADED),
@@ -132,7 +148,7 @@ def is_release_seen(release_id: int) -> bool:
     (downloaded, or explicitly baselined as pre-existing catalogue)."""
     if not release_id:
         return False
-    with _lock, _connect() as conn:
+    with _db() as conn:
         row = conn.execute("SELECT 1 FROM downloads WHERE release_id = ? LIMIT 1", (release_id,)).fetchone()
         return row is not None
 
@@ -149,7 +165,7 @@ def mark_release_baseline(release_id: int, release_name: str, label: str, reason
 
 
 def add_pending_release(release_id: int, label_url: str, release_name: str, expected_date: str) -> None:
-    with _lock, _connect() as conn:
+    with _db() as conn:
         conn.execute(
             """INSERT OR IGNORE INTO pending_releases
                (release_id, label_url, release_name, expected_date, first_seen_at)
@@ -161,7 +177,7 @@ def add_pending_release(release_id: int, label_url: str, release_name: str, expe
 def get_due_pending(label_url: str) -> list[dict]:
     """Pre-releases we're tracking for this label whose release date has arrived."""
     today = datetime.now(timezone.utc).date().isoformat()
-    with _lock, _connect() as conn:
+    with _db() as conn:
         conn.row_factory = sqlite3.Row
         rows = conn.execute(
             "SELECT * FROM pending_releases WHERE label_url = ? AND expected_date <= ?",
@@ -171,7 +187,7 @@ def get_due_pending(label_url: str) -> list[dict]:
 
 
 def get_all_pending(label_url: str) -> list[dict]:
-    with _lock, _connect() as conn:
+    with _db() as conn:
         conn.row_factory = sqlite3.Row
         rows = conn.execute(
             "SELECT * FROM pending_releases WHERE label_url = ? ORDER BY expected_date", (label_url,)
@@ -180,7 +196,7 @@ def get_all_pending(label_url: str) -> list[dict]:
 
 
 def remove_pending(release_id: int, label_url: str) -> None:
-    with _lock, _connect() as conn:
+    with _db() as conn:
         conn.execute(
             "DELETE FROM pending_releases WHERE release_id = ? AND label_url = ?", (release_id, label_url)
         )
@@ -211,22 +227,21 @@ def backfill_from_disk(downloads_dir: str) -> dict:
     skipped_existing = 0
     unreadable = 0
 
-    with _lock:
-        with _connect() as conn:
-            existing_ids = {row[0] for row in conn.execute("SELECT DISTINCT track_id FROM downloads")}
-            # Backfill file sizes for rows recorded before file_size_bytes existed —
-            # matters directly for the volume-over-time stats, not just cosmetic.
-            zero_size_rows = conn.execute(
-                "SELECT id, file_path FROM downloads WHERE (file_size_bytes IS NULL OR file_size_bytes = 0) "
-                "AND file_path != ''"
-            ).fetchall()
-            for row_id, file_path in zero_size_rows:
-                try:
-                    size = Path(file_path).stat().st_size
-                except OSError:
-                    continue
-                if size:
-                    conn.execute("UPDATE downloads SET file_size_bytes = ? WHERE id = ?", (size, row_id))
+    with _db() as conn:
+        existing_ids = {row[0] for row in conn.execute("SELECT DISTINCT track_id FROM downloads")}
+        # Backfill file sizes for rows recorded before file_size_bytes existed —
+        # matters directly for the volume-over-time stats, not just cosmetic.
+        zero_size_rows = conn.execute(
+            "SELECT id, file_path FROM downloads WHERE (file_size_bytes IS NULL OR file_size_bytes = 0) "
+            "AND file_path != ''"
+        ).fetchall()
+        for row_id, file_path in zero_size_rows:
+            try:
+                size = Path(file_path).stat().st_size
+            except OSError:
+                continue
+            if size:
+                conn.execute("UPDATE downloads SET file_size_bytes = ? WHERE id = ?", (size, row_id))
 
     for f in files:
         try:
@@ -270,7 +285,7 @@ def backfill_from_disk(downloads_dir: str) -> dict:
 
 
 def get_recent(limit: int = 50) -> list[dict]:
-    with _lock, _connect() as conn:
+    with _db() as conn:
         conn.row_factory = sqlite3.Row
         rows = conn.execute(
             "SELECT * FROM downloads WHERE status = ? ORDER BY id DESC LIMIT ?", (STATUS_DOWNLOADED, limit)
@@ -279,7 +294,7 @@ def get_recent(limit: int = 50) -> list[dict]:
 
 
 def get_stats() -> dict:
-    with _lock, _connect() as conn:
+    with _db() as conn:
         conn.row_factory = sqlite3.Row
         rows = conn.execute(
             "SELECT genre, subgenre, artists, label, bpm, key, quality, downloaded_at, release_id, "
@@ -378,7 +393,7 @@ def verify_library() -> dict:
     entries here; that's expected for that workflow (dedup should still treat
     those tracks as downloaded), not a sign of corruption. Users who keep a
     stable library layout can use the count to spot real problems."""
-    with _lock, _connect() as conn:
+    with _db() as conn:
         conn.row_factory = sqlite3.Row
         rows = conn.execute(
             "SELECT id, track_id, track_name, artists, release_name, file_path "
@@ -417,7 +432,7 @@ def remove_missing_entries() -> int:
     verify report. Never touches rows with an empty file_path (those predate
     file-size tracking and shouldn't be judged missing just because we never
     recorded where they went)."""
-    with _lock, _connect() as conn:
+    with _db() as conn:
         rows = conn.execute(
             "SELECT id, file_path FROM downloads WHERE status = ? AND file_path != ''",
             (STATUS_DOWNLOADED,),
@@ -435,7 +450,6 @@ def clear_all() -> int:
     file-existence checks that will never match their workflow. Does not touch
     pending_releases (watch-list pre-release tracking) since that's unrelated
     to what's already been downloaded."""
-    with _lock, _connect() as conn:
+    with _db() as conn:
         cur = conn.execute("DELETE FROM downloads")
-        conn.commit()
         return cur.rowcount
