@@ -461,7 +461,7 @@ def _run_download() -> None:
         try:
             run.handle_url(item["url"])
         finally:
-            run.shutdown()
+            run.shutdown(cancel_pending=state.stop_requested)
             state.current_run = None
 
         total_downloaded += run.stats.downloaded
