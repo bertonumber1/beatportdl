@@ -20,13 +20,37 @@
 
 * { box-sizing: border-box; }
 
+html { background: var(--bg); }
+
 body {
   margin: 0;
-  background: radial-gradient(ellipse at top, #101418 0%, var(--bg) 55%);
+  /* transparent: the actual page background is the fixed wallpaper layer
+     below (body::before) over the dark html canvas — an opaque background
+     here would paint on top of it and hide it. */
+  background: transparent;
   color: var(--text);
   font-family: var(--font);
   min-height: 100vh;
   overflow-x: hidden;
+}
+
+/* Full-page skull-and-crossbones wallpaper. The source art is small (236x393),
+   so it's shown through a slight blur and a dark overlay — reads as ambient
+   texture instead of upscaling artifacts, and keeps text contrast intact.
+   The radial layer keeps the old subtle blue-grey glow at the top of the page.
+   scale(1.05) hides the blur's bright edge fringe at the viewport borders. */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background:
+    radial-gradient(ellipse at top, rgba(16, 20, 24, 0.5) 0%, transparent 55%),
+    linear-gradient(rgba(10, 10, 10, 0.72), rgba(10, 10, 10, 0.85)),
+    url("/static/wallpaper-pirate.jpg") center / cover no-repeat;
+  filter: blur(3px) saturate(1.1);
+  transform: scale(1.05);
+  pointer-events: none;
 }
 
 .hidden { display: none !important; }
@@ -121,23 +145,8 @@ body {
    (50% + half its max-width + a 16px gap) — by construction the far edge
    always lands exactly at the viewport edge, so it can never overlap #app's
    content, and it scales down gracefully on moderate-width screens (1440p
-   laptops) instead of only appearing on ultra-wide (1500px+) displays. Pirate
-   (right) appears while a download is actively running, as if watching the
-   haul come in; anarchy art (left) sits as constant ambient branding. */
-#side-mascot {
-  position: fixed;
-  left: calc(50% + 606px);
-  bottom: 0;
-  width: clamp(90px, calc((100vw - 1180px) / 2 - 16px), 240px);
-  opacity: 0;
-  pointer-events: none;
-  filter: drop-shadow(0 -10px 30px rgba(88,166,255,0.1)) drop-shadow(0 6px 16px rgba(0,0,0,0.6));
-  transition: opacity .5s ease, transform .5s ease;
-  transform: translateY(24px);
-  z-index: 1;
-}
-#side-mascot.visible { opacity: 0.92; transform: translateY(0); }
-
+   laptops) instead of only appearing on ultra-wide (1500px+) displays.
+   Anarchy art (left) sits as constant ambient branding. */
 #side-anarchy {
   position: fixed;
   right: calc(50% + 606px);
@@ -154,7 +163,7 @@ body {
 /* Below this, there's under 90px of real margin either side of #app — not
    enough to show anything without crowding the content. */
 @media (max-width: 1400px) {
-  #side-mascot, #side-anarchy { display: none; }
+  #side-anarchy { display: none; }
 }
 
 /* ---- panels ---- */
