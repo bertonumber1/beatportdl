@@ -69,6 +69,7 @@ class BeatportClient:
         payload: dict | None = None,
         content_type: str = "",
         allow_redirects: bool = True,
+        _auth_retried: bool = False,
     ) -> requests.Response:
         if endpoint not in _NO_AUTH_CHECK_ENDPOINTS:
             self.auth.check(self)
@@ -94,9 +95,13 @@ class BeatportClient:
             raise ApiError(f"request failed: {e}") from e
 
         if resp.status_code not in (200, 302):
-            if resp.status_code == 401 and endpoint not in _NO_AUTH_CHECK_ENDPOINTS:
+            # Retry a 401 once after forcing a re-auth. Only once — if the API
+            # still says 401 with a freshly issued token (revoked account,
+            # lapsed subscription), retrying forever would recurse until the
+            # interpreter's recursion limit killed the worker thread.
+            if resp.status_code == 401 and endpoint not in _NO_AUTH_CHECK_ENDPOINTS and not _auth_retried:
                 self.auth.invalidate()
-                return self.raw_fetch(method, endpoint, payload, content_type, allow_redirects)
+                return self.raw_fetch(method, endpoint, payload, content_type, allow_redirects, _auth_retried=True)
             detail = "Unknown error"
             try:
                 body = resp.json()

@@ -33,8 +33,10 @@ class App:
         self.stats = RunStats()
         self.active_files: set[str] = set()
         self.active_files_lock = threading.Lock()
-        self.global_pool = ThreadPoolExecutor(max_workers=cfg.max_global_workers)
-        self.download_pool = ThreadPoolExecutor(max_workers=cfg.max_download_workers)
+        # Clamp: ThreadPoolExecutor raises on max_workers < 1, and a 0 typed
+        # into the settings screen must not make every download attempt fail.
+        self.global_pool = ThreadPoolExecutor(max_workers=max(1, cfg.max_global_workers))
+        self.download_pool = ThreadPoolExecutor(max_workers=max(1, cfg.max_download_workers))
         # Optional sink for structured progress events (used by the web UI's SSE
         # stream). None in normal CLI/TUI use, where rich console.print is enough.
         self.on_event = on_event
