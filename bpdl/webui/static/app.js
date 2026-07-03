@@ -101,7 +101,6 @@ function renderQueue() {
   $("#start-btn").disabled = state.queue.length === 0 || state.status?.downloading;
   $("#start-btn").classList.toggle("hidden", !!state.status?.downloading);
   $("#stop-btn").classList.toggle("hidden", !state.status?.downloading);
-  $("#side-mascot").classList.toggle("visible", !!state.status?.downloading);
 
   state.queue.forEach((item, idx) => {
     const card = document.createElement("div");
