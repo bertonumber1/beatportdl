@@ -373,6 +373,34 @@ def clear_queue() -> dict:
 
 # ---- scan / wizard -----------------------------------------------------------------
 
+class PeekPayload(BaseModel):
+    url: str
+
+
+@app.post("/api/peek")
+def peek(payload: PeekPayload) -> dict:
+    """Cheap size check — a single API call (page 1) gives the true total count
+    via Paginated.count, with no need to walk every page. Used to warn before an
+    unfiltered 'queue everything' download commits to something huge (a real
+    incident: 'Cherry Red Records' turned out to have 4940 releases)."""
+    _require_login()
+    try:
+        link = parse_url(payload.url)
+    except Exception as e:
+        raise HTTPException(400, str(e)) from e
+    client = _client_for(link.store)
+    try:
+        if link.type == LABEL_LINK:
+            page = client.get_label_releases(link.id, 1, link.params)
+            return {"count": page.count, "kind": "releases"}
+        if link.type == ARTIST_LINK:
+            page = client.get_artist_tracks(link.id, 1, link.params)
+            return {"count": page.count, "kind": "tracks"}
+    except Exception as e:
+        raise HTTPException(400, f"Failed to check size: {e}") from e
+    return {"count": None, "kind": None}
+
+
 class ScanPayload(BaseModel):
     url: str
 
@@ -691,6 +719,25 @@ def _watch_scheduler_loop() -> None:
 @app.get("/api/stats")
 def get_stats() -> dict:
     return history.get_stats()
+
+
+# ---- history / library maintenance -----------------------------------------------------------------
+
+@app.get("/api/history/verify")
+def verify_library() -> dict:
+    return history.verify_library()
+
+
+@app.post("/api/history/remove-missing")
+def remove_missing() -> dict:
+    removed = history.remove_missing_entries()
+    return {"removed": removed}
+
+
+@app.post("/api/history/clear")
+def clear_history() -> dict:
+    removed = history.clear_all()
+    return {"removed": removed}
 
 
 # ---- library maintenance -----------------------------------------------------------------

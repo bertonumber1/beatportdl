@@ -12,6 +12,7 @@ const state = {
   activity: new Map(), // track id -> card element
   runCounts: { downloaded: 0, skipped: 0, failed: 0 },
   failedTracks: [],
+  wizardLargeCatalogue: false,
 };
 
 // ---- tiny fetch helpers ----
@@ -201,6 +202,8 @@ async function addSelectedSearchResults() {
 
 // ---- wizard ----
 
+const LARGE_CATALOGUE_THRESHOLD = 150;
+
 function openWizard(queueIndex, url) {
   state.wizardQueueIndex = queueIndex;
   state.wizardScan = null;
@@ -212,6 +215,33 @@ function openWizard(queueIndex, url) {
   $("#wizard-results").classList.add("hidden");
   $("#wizard-modal").classList.remove("hidden");
   $("#wizard-modal").dataset.url = url;
+
+  $("#wizard-scope-size").textContent = "Checking size…";
+  $("#wizard-scope-warning").classList.add("hidden");
+  $("#wizard-scope-confirm-row").classList.add("hidden");
+  $("#wizard-scope-confirm-checkbox").checked = false;
+  $("#wizard-scope-all-btn").disabled = false;
+  state.wizardLargeCatalogue = false;
+
+  api("POST", "/api/peek", { url })
+    .then((data) => {
+      if (data.count == null) {
+        $("#wizard-scope-size").textContent = "";
+        return;
+      }
+      $("#wizard-scope-size").textContent = `${data.count} ${data.kind} in this catalogue.`;
+      if (data.count > LARGE_CATALOGUE_THRESHOLD) {
+        state.wizardLargeCatalogue = true;
+        $("#wizard-scope-warning").textContent =
+          `That's a large catalogue (${data.count} ${data.kind}) — queuing everything unfiltered will use significant time, bandwidth, and storage.`;
+        $("#wizard-scope-warning").classList.remove("hidden");
+        $("#wizard-scope-confirm-row").classList.remove("hidden");
+        $("#wizard-scope-all-btn").disabled = true;
+      }
+    })
+    .catch(() => {
+      $("#wizard-scope-size").textContent = "";
+    });
 }
 
 function startWizardScan(url) {
@@ -696,6 +726,9 @@ function wireEvents() {
   $("#search-add-btn").addEventListener("click", addSelectedSearchResults);
   $(".wizard-close").addEventListener("click", () => $("#wizard-modal").classList.add("hidden"));
   $("#wizard-scope-all-btn").addEventListener("click", () => confirmWizard(true));
+  $("#wizard-scope-confirm-checkbox").addEventListener("change", (e) => {
+    $("#wizard-scope-all-btn").disabled = state.wizardLargeCatalogue && !e.target.checked;
+  });
   $("#wizard-scope-filter-btn").addEventListener("click", () => startWizardScan($("#wizard-modal").dataset.url));
   $("#wizard-bypass-btn").addEventListener("click", () => confirmWizard(true));
   $("#wizard-confirm-btn").addEventListener("click", () => confirmWizard(false));
@@ -705,6 +738,42 @@ function wireEvents() {
       await api("POST", "/api/art/recheck", { only_missing: $("#art-only-missing").checked });
     } catch (e) {
       $("#art-recheck-status").textContent = e.message;
+    }
+  });
+  $("#verify-library-btn").addEventListener("click", async () => {
+    $("#verify-library-status").textContent = "Checking…";
+    $("#remove-missing-btn").classList.add("hidden");
+    try {
+      const r = await api("GET", "/api/history/verify");
+      $("#verify-library-status").textContent =
+        `${r.total_checked} tracked — ${r.ok} found on disk, ${r.missing} missing, ${r.no_path_recorded} predate file-path tracking.`;
+      if (r.missing > 0) {
+        $("#remove-missing-btn").textContent = `Remove ${r.missing} missing entries`;
+        $("#remove-missing-btn").classList.remove("hidden");
+      }
+    } catch (e) {
+      $("#verify-library-status").textContent = e.message;
+    }
+  });
+  $("#remove-missing-btn").addEventListener("click", async () => {
+    if (!confirm("Remove history entries for tracks whose files are gone? This can't be undone.")) return;
+    try {
+      const r = await api("POST", "/api/history/remove-missing");
+      $("#verify-library-status").textContent = `Removed ${r.removed} entries.`;
+      $("#remove-missing-btn").classList.add("hidden");
+    } catch (e) {
+      $("#verify-library-status").textContent = e.message;
+    }
+  });
+  $("#clear-history-btn").addEventListener("click", async () => {
+    if (!confirm("Wipe the entire download history? Dedup will no longer know about anything downloaded before this point. This can't be undone.")) return;
+    try {
+      const r = await api("POST", "/api/history/clear");
+      showToast(`Cleared ${r.removed} history entries.`, "success");
+      $("#verify-library-status").textContent = "";
+      $("#remove-missing-btn").classList.add("hidden");
+    } catch (e) {
+      showToast(e.message, "error");
     }
   });
   $("#watch-add-btn").addEventListener("click", async () => {
