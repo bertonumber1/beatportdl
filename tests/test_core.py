@@ -261,3 +261,51 @@ def test_track_baseline_is_seen_but_not_downloaded(tmp_path):
 def test_track_seen_ignores_zero_id(tmp_path):
     history = _history_at(tmp_path)
     assert not history.is_track_seen(0)
+
+
+def test_label_queued_during_download_is_not_dropped():
+    # Regression: queueing a second label while the first is downloading used to
+    # vanish — _run_download snapshotted the queue at start and cleared it whole
+    # at the end, so the mid-run addition was never processed and got wiped.
+    from bpdl.webui import server
+
+    processed: list[str] = []
+
+    class FakeStats:
+        def __init__(self):
+            self.downloaded = 0
+            self.skipped: dict = {}
+            self.failed = 0
+
+        def add_failed(self):
+            self.failed += 1
+
+    class FakeApp:
+        def __init__(self, cfg, bp, bs, on_event=None):
+            self.stats = FakeStats()
+
+        def handle_url(self, url):
+            processed.append(url)
+            # Simulate the user queueing label B while label A is downloading.
+            if url == "urlA":
+                server.state.queue.append({"url": "urlB", "name": "Label B"})
+
+        def shutdown(self, cancel_pending=False):
+            pass
+
+        def cancel(self):
+            pass
+
+    server.state.queue = [{"url": "urlA", "name": "Label A"}]
+    server.state.downloading = False
+    server.state.stop_requested = False
+    try:
+        with mock.patch.object(server, "App", FakeApp), \
+                mock.patch.object(server.bus, "publish", lambda ev: None):
+            server._run_download()
+
+        assert processed == ["urlA", "urlB"]   # both got downloaded, in order
+        assert server.state.queue == []        # nothing left dangling
+        assert server.state.downloading is False
+    finally:
+        server.state.queue = []

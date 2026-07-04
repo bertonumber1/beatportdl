@@ -36,7 +36,7 @@ from bpdl.scanner import for_paginated, rank_map, sanitize_params, scan_artist, 
 from bpdl.search import extract_store_tag
 
 STATIC_DIR = Path(__file__).parent / "static"
-VERSION = "2.3.0"
+VERSION = "2.3.1"
 
 bus = EventBus()
 
@@ -465,13 +465,15 @@ def _apply_filters(filters: dict | None) -> None:
 def _run_download() -> None:
     state.downloading = True
     state.stop_requested = False
-    items = list(state.queue)
-    bus.publish({"type": "batch_start", "count": len(items)})
+    bus.publish({"type": "batch_start", "count": len(state.queue)})
 
     total_downloaded = total_skipped = total_failed = 0
     failed_tracks: list[dict] = []
     stopped_early = False
-    processed = 0
+    # Track finished items by identity rather than snapshotting the queue up
+    # front: a label queued *while* this batch is running gets appended to
+    # state.queue and must be picked up here, not frozen out.
+    processed_ids: set[int] = set()
 
     def on_event(ev: dict) -> None:
         if ev.get("type") == "track_error" and ev.get("url"):
@@ -483,9 +485,15 @@ def _run_download() -> None:
     # would otherwise leave the UI permanently reporting "a download is
     # already running" until the server restarts.
     try:
-        for item in items:
+        while True:
             if state.stop_requested:
                 stopped_early = True
+                break
+            # Re-scan the live queue each iteration for the next item we haven't
+            # done yet. This is how mid-run additions get processed, and it's
+            # robust to items being removed from the queue underneath us.
+            item = next((q for q in state.queue if id(q) not in processed_ids), None)
+            if item is None:
                 break
 
             bus.publish({"type": "item_start", "url": item["url"], "name": item["name"], "cover": item.get("cover", "")})
@@ -510,20 +518,18 @@ def _run_download() -> None:
             total_skipped += sum(run.stats.skipped.values())
             total_failed += run.stats.failed
             bus.publish({"type": "item_done", "url": item["url"]})
-            processed += 1
+            processed_ids.add(id(item))
     finally:
-        # Whatever's left in the queue when stopped (including the interrupted item)
-        # stays queued — a stop cancels the in-progress run, not the intent to
-        # eventually download the rest.
-        if stopped_early:
-            state.queue = items[processed:]
-        else:
-            state.queue.clear()
+        # Drop exactly the items we finished, keeping everything still pending:
+        # labels queued mid-run that we hadn't reached, and — after a stop — the
+        # remainder. A blanket clear here used to wipe mid-run additions.
+        state.queue = [q for q in state.queue if id(q) not in processed_ids]
         # Per-item filters mutate the shared cfg — reset so a later watch-list
         # check doesn't silently inherit the last queue item's filters.
         _apply_filters(None)
         state.downloading = False
         state.stop_requested = False
+        bus.publish({"type": "queue_updated", "queue": state.queue})
         bus.publish({
             "type": "batch_done",
             "downloaded": total_downloaded,
