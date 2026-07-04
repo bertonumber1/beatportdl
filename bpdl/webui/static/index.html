@@ -13,9 +13,25 @@
 <body>
 <div id="app">
 
+  <!-- spray-through-stencil roughening for the hero wordmark: turbulence
+       displaces the glyph edges so they read as hand-sprayed rather than clean -->
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <filter id="graffiti-rough">
+      <feTurbulence type="fractalNoise" baseFrequency="0.028 0.035" numOctaves="2" seed="7" result="noise"/>
+      <feDisplacementMap in="SourceGraphic" in2="noise" scale="4" xChannelSelector="R" yChannelSelector="G"/>
+    </filter>
+  </svg>
+
   <div id="hero">
     <div id="hero-glow"></div>
-    <h1 id="hero-logo">Smash-n-Grab</h1>
+    <div id="hero-logo-wrap">
+      <h1 id="hero-logo">Smash-n-Grab</h1>
+      <span class="drip d1" aria-hidden="true"></span>
+      <span class="drip d2" aria-hidden="true"></span>
+      <span class="drip d3" aria-hidden="true"></span>
+      <span class="drip d4" aria-hidden="true"></span>
+      <span class="drip d5" aria-hidden="true"></span>
+    </div>
     <p id="hero-tagline">Beatport / Beatsource downloader</p>
     <div id="hero-badges">
       <img src="/static/mascot-parrot.svg" class="hero-badge-icon" alt="" title="the crew">
@@ -289,11 +305,11 @@
         </div>
 
         <div class="maintenance-section">
-          <h3>Watched labels</h3>
-          <p class="muted small">Automatically checks watched labels for new releases on the interval set above, downloads anything new, and fires the notification webhook if configured.</p>
+          <h3>Watched labels &amp; artists</h3>
+          <p class="muted small">Automatically checks watched labels (for new releases) and artists (for new tracks) on the interval set above, downloads anything new, and fires the notification webhook if configured.</p>
           <div id="watch-list" class="chip-list" style="max-height:160px;"></div>
           <div class="watch-add-row" style="display:flex;gap:10px;margin-top:12px;">
-            <input id="watch-url-input" type="text" placeholder="Paste a label URL to watch..." style="flex:1;">
+            <input id="watch-url-input" type="text" placeholder="Paste a label or artist URL to watch..." style="flex:1;">
             <button id="watch-add-btn" class="btn ghost">Watch</button>
           </div>
           <div class="modal-actions" style="justify-content:flex-start;margin-top:10px;">

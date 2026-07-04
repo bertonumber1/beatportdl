@@ -184,6 +184,7 @@ def _cfg_dict(cfg: config_module.AppConfig) -> dict:
         "proxy": cfg.proxy,
         "skip_previously_downloaded": cfg.skip_previously_downloaded,
         "watched_labels": cfg.watched_labels,
+        "watched_artists": cfg.watched_artists,
         "watch_interval_hours": cfg.watch_interval_hours,
         "notify_webhook_url": cfg.notify_webhook_url,
     }
@@ -560,13 +561,19 @@ class WatchAddPayload(BaseModel):
     url: str
 
 
+def _watch_response() -> dict:
+    labels = [{**e, "pending_releases": history.get_all_pending(e["url"])} for e in state.cfg.watched_labels]
+    artists = [{**e, "pending_releases": history.get_all_pending(e["url"])} for e in state.cfg.watched_artists]
+    return {
+        "watched_labels": labels,
+        "watched_artists": artists,
+        "interval_hours": state.cfg.watch_interval_hours,
+    }
+
+
 @app.get("/api/watch")
 def list_watch() -> dict:
-    labels = []
-    for entry in state.cfg.watched_labels:
-        pending = history.get_all_pending(entry["url"])
-        labels.append({**entry, "pending_releases": pending})
-    return {"watched_labels": labels, "interval_hours": state.cfg.watch_interval_hours}
+    return _watch_response()
 
 
 @app.post("/api/watch")
@@ -576,30 +583,33 @@ def add_watch(payload: WatchAddPayload) -> dict:
         link = parse_url(payload.url)
     except Exception as e:
         raise HTTPException(400, f"Invalid URL: {e}") from e
-    if link.type != LABEL_LINK:
-        raise HTTPException(400, "watching only supports label URLs")
-    if any(w["url"] == payload.url for w in state.cfg.watched_labels):
-        raise HTTPException(400, "already watching this label")
+    if link.type not in (LABEL_LINK, ARTIST_LINK):
+        raise HTTPException(400, "watching only supports label or artist URLs")
+    is_artist = link.type == ARTIST_LINK
+    target = state.cfg.watched_artists if is_artist else state.cfg.watched_labels
+    if any(w["url"] == payload.url for w in target):
+        raise HTTPException(400, f"already watching this {'artist' if is_artist else 'label'}")
     client = _client_for(link.store)
     try:
-        label = client.get_label(link.id)
+        name = client.get_artist(link.id).name if is_artist else client.get_label(link.id).name
     except Exception as e:
-        raise HTTPException(400, f"Failed to fetch label: {e}") from e
-    # watched_since anchors what counts as "new" — only releases published on or
-    # after today count as genuinely new; the label's existing back-catalogue
-    # gets baselined (marked seen, not downloaded) the first time it's checked.
-    entry = {"url": payload.url, "name": label.name, "watched_since": datetime.now(timezone.utc).date().isoformat()}
-    state.cfg.watched_labels.append(entry)
+        raise HTTPException(400, f"Failed to fetch {'artist' if is_artist else 'label'}: {e}") from e
+    # watched_since anchors what counts as "new" — only releases/tracks published
+    # on or after today count as genuinely new; the existing back-catalogue gets
+    # baselined (marked seen, not downloaded) the first time it's checked.
+    entry = {"url": payload.url, "name": name, "watched_since": datetime.now(timezone.utc).date().isoformat()}
+    target.append(entry)
     config_module.save(state.cfg, state.config_path)
-    return {"watched_labels": state.cfg.watched_labels}
+    return _watch_response()
 
 
-@app.delete("/api/watch/{index}")
-def remove_watch(index: int) -> dict:
-    if 0 <= index < len(state.cfg.watched_labels):
-        state.cfg.watched_labels.pop(index)
+@app.delete("/api/watch/{kind}/{index}")
+def remove_watch(kind: str, index: int) -> dict:
+    target = state.cfg.watched_artists if kind == "artist" else state.cfg.watched_labels
+    if 0 <= index < len(target):
+        target.pop(index)
         config_module.save(state.cfg, state.config_path)
-    return {"watched_labels": state.cfg.watched_labels}
+    return _watch_response()
 
 
 @app.post("/api/watch/check-now")
@@ -607,8 +617,8 @@ def watch_check_now() -> dict:
     _require_login()
     if state.watch_checking:
         raise HTTPException(400, "a watch check is already running")
-    if not state.cfg.watched_labels:
-        raise HTTPException(400, "no watched labels configured")
+    if not (state.cfg.watched_labels or state.cfg.watched_artists):
+        raise HTTPException(400, "nothing is being watched")
     threading.Thread(target=_run_watch_check, daemon=True).start()
     return {"started": True}
 
@@ -683,24 +693,92 @@ def _check_watched_label(entry: dict) -> dict:
     }
 
 
+def _check_watched_artist(entry: dict) -> dict:
+    """Artist watch is track-granular: an artist can appear on a compilation we
+    don't otherwise want, so we detect and grab only their individual new tracks
+    rather than whole releases (that's the label watch's job). Baselining, dedup
+    and pre-release tracking all mirror _check_watched_label but keyed on tracks."""
+    try:
+        link = parse_url(entry["url"])
+    except Exception as e:
+        return {"new_releases": 0, "new_tracks": 0, "error": str(e)}
+    client = _client_for(link.store)
+    artist_url = entry["url"]
+    watched_since = _parse_release_date(entry.get("watched_since", "")) or date.min
+    today = datetime.now(timezone.utc).date()
+
+    new_tracks = []
+    newly_pending = []
+    try:
+        def on_track(track, _i):
+            if history.is_track_seen(track.id):
+                return
+            artists_str = ", ".join(a.get("name", "") for a in track.artists)
+            rel = track.release
+            track_date = _parse_release_date(track.publish_date)
+            if track_date is None:
+                history.mark_track_baseline(track.id, rel.id, track.name, artists_str, rel.name, rel.label.name)
+            elif track_date > today:
+                # Pre-release track: tracked (not baselined) so it re-evaluates each
+                # cycle and downloads once its date arrives.
+                history.add_pending_release(track.id, artist_url, track.name, track_date.isoformat())
+                newly_pending.append(track)
+            elif track_date >= watched_since:
+                new_tracks.append(track)
+            else:
+                history.mark_track_baseline(track.id, rel.id, track.name, artists_str, rel.name, rel.label.name)
+
+        for_paginated(link.id, "", client.get_artist_tracks, on_track)
+    except Exception as e:
+        return {"new_releases": 0, "new_tracks": 0, "error": str(e)}
+
+    # Pre-release tracks we were tracking whose date has now arrived are picked up
+    # by on_track above (they're never baselined); just clear them from pending.
+    for row in history.get_due_pending(artist_url):
+        history.remove_pending(row["release_id"], artist_url)
+
+    total_tracks = 0
+    if new_tracks:
+        run = App(state.cfg, state.bp, state.bs, on_event=bus.publish)
+        for track in new_tracks:
+            try:
+                run.handle_url(track.store_url())
+            except Exception:
+                pass
+        run.shutdown()
+        total_tracks = run.stats.downloaded
+
+    return {
+        "new_releases": len(new_tracks),
+        "new_tracks": total_tracks,
+        "newly_pending": len(newly_pending),
+        "names": [t.name for t in new_tracks],
+    }
+
+
 def _run_watch_check() -> None:
     if state.watch_checking or state.downloading or state.login_status != "ok":
         return
-    if not state.cfg.watched_labels:
+    if not (state.cfg.watched_labels or state.cfg.watched_artists):
         return
 
     state.watch_checking = True
     # Watch downloads must never inherit filters left over from a queue item.
     _apply_filters(None)
-    bus.publish({"type": "watch_check_start", "count": len(state.cfg.watched_labels)})
+    watched = (
+        [(e, _check_watched_label) for e in state.cfg.watched_labels]
+        + [(e, _check_watched_artist) for e in state.cfg.watched_artists]
+    )
+    bus.publish({"type": "watch_check_start", "count": len(watched)})
     summary_lines = []
     total_new_releases = total_new_tracks = total_pending = 0
     try:
-        for entry in state.cfg.watched_labels:
+        for entry, checker in watched:
             bus.publish({"type": "watch_check_status", "message": f"Checking {entry['name']}..."})
-            result = _check_watched_label(entry)
+            result = checker(entry)
             if result.get("new_releases"):
-                summary_lines.append(f"{entry['name']}: {result['new_releases']} new release(s), {result['new_tracks']} track(s)")
+                unit = "track" if checker is _check_watched_artist else "release"
+                summary_lines.append(f"{entry['name']}: {result['new_releases']} new {unit}(s), {result['new_tracks']} track(s)")
                 total_new_releases += result["new_releases"]
                 total_new_tracks += result["new_tracks"]
             total_pending += result.get("newly_pending", 0)
@@ -824,6 +902,23 @@ def main() -> None:
     import uvicorn
 
     port = int(os.environ.get("BPDL_WEB_PORT", "8095"))
+    url = f"http://localhost:{port}"
+    # Prominent banner so someone launching the Windows .exe (which just opens a
+    # console) knows the UI lives in a browser at this address — the app has no
+    # window of its own. Printed to the same console before uvicorn's own logs.
+    banner = (
+        "\n"
+        "  ============================================================\n"
+        "     Smash-n-Grab  ·  BP-DL  is running\n"
+        "  ------------------------------------------------------------\n"
+        f"     Open this address in your web browser:\n"
+        f"         {url}\n"
+        "\n"
+        "     Keep this window open while you use the app.\n"
+        "     Close this window to stop it.\n"
+        "  ============================================================\n"
+    )
+    print(banner, flush=True)
     uvicorn.run(app, host="0.0.0.0", port=port, log_level="info")
 
 

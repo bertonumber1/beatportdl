@@ -141,6 +141,7 @@ class AppConfig:
     skip_previously_downloaded: bool = True
 
     watched_labels: list[dict] = field(default_factory=list)
+    watched_artists: list[dict] = field(default_factory=list)
     watch_interval_hours: int = 6
 
     # Generic outbound notification hook — a plain HTTP POST, so it works with
@@ -200,6 +201,7 @@ def parse(file_path: str | Path) -> AppConfig:
         filter_publish_date_to=raw.get("filter_publish_date_to", ""),
         skip_previously_downloaded=merged["skip_previously_downloaded"],
         watched_labels=raw.get("watched_labels") or [],
+        watched_artists=raw.get("watched_artists") or [],
         watch_interval_hours=merged["watch_interval_hours"],
         notify_webhook_url=merged["notify_webhook_url"],
     )
@@ -262,6 +264,7 @@ def save(cfg: AppConfig, file_path: str | Path) -> None:
         "proxy": cfg.proxy,
         "skip_previously_downloaded": cfg.skip_previously_downloaded,
         "watched_labels": cfg.watched_labels,
+        "watched_artists": cfg.watched_artists,
         "watch_interval_hours": cfg.watch_interval_hours,
         "notify_webhook_url": cfg.notify_webhook_url,
     }

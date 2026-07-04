@@ -558,7 +558,7 @@ function handleEvent(ev) {
       showToast(`Art recheck complete — ${ev.files_fixed} file(s) fixed.`, ev.failed ? "error" : "success");
       break;
     case "watch_check_start":
-      $("#watch-status").textContent = `Checking ${ev.count} watched label(s)...`;
+      $("#watch-status").textContent = `Checking ${ev.count} watched item(s)...`;
       break;
     case "watch_check_status":
       $("#watch-status").textContent = ev.message;
@@ -610,23 +610,35 @@ async function openSettingsModal() {
 
 async function refreshWatchList() {
   const data = await api("GET", "/api/watch");
-  renderWatchList(data.watched_labels || []);
+  renderWatchList(data.watched_labels || [], data.watched_artists || []);
 }
 
-function renderWatchList(entries) {
+function renderWatchList(labels, artists) {
   const el = $("#watch-list");
   el.innerHTML = "";
-  if (!entries.length) {
-    el.innerHTML = '<p class="muted small">Not watching any labels yet.</p>';
+  if (!labels.length && !artists.length) {
+    el.innerHTML = '<p class="muted small">Not watching any labels or artists yet.</p>';
     return;
   }
+  renderWatchSection(el, "Labels", "label", labels);
+  renderWatchSection(el, "Artists", "artist", artists);
+}
+
+function renderWatchSection(el, heading, kind, entries) {
+  if (!entries.length) return;
+  const head = document.createElement("p");
+  head.className = "muted small";
+  head.style.cssText = "margin:4px 0 2px;font-weight:600;letter-spacing:.3px;";
+  head.textContent = heading;
+  el.appendChild(head);
   entries.forEach((w, idx) => {
     const row = document.createElement("div");
     row.className = "chip";
-    row.style.cssText = "cursor:default;flex-direction:column;align-items:stretch;gap:4px;";
+    row.style.cssText = "cursor:default;flex-direction:column;align-items:stretch;gap:4px;position:relative;";
     const pending = w.pending_releases || [];
+    const noun = kind === "artist" ? "track" : "pre-release";
     const pendingText = pending.length
-      ? `${pending.length} upcoming pre-release${pending.length > 1 ? "s" : ""}: ` +
+      ? `${pending.length} upcoming ${noun}${pending.length > 1 ? "s" : ""}: ` +
         pending.map((p) => `${p.release_name} (${p.expected_date})`).join(", ")
       : "";
     row.innerHTML = `
@@ -640,10 +652,9 @@ function renderWatchList(entries) {
     removeBtn.style.cssText = "position:absolute;top:4px;right:4px;";
     removeBtn.innerHTML = "&times;";
     removeBtn.addEventListener("click", async () => {
-      const data = await api("DELETE", `/api/watch/${idx}`);
-      renderWatchList(data.watched_labels || []);
+      const data = await api("DELETE", `/api/watch/${kind}/${idx}`);
+      renderWatchList(data.watched_labels || [], data.watched_artists || []);
     });
-    row.style.position = "relative";
     row.appendChild(removeBtn);
     el.appendChild(row);
   });
@@ -802,7 +813,7 @@ function wireEvents() {
     if (!url) return;
     try {
       const data = await api("POST", "/api/watch", { url });
-      renderWatchList(data.watched_labels || []);
+      renderWatchList(data.watched_labels || [], data.watched_artists || []);
       input.value = "";
       $("#watch-status").textContent = "Watching.";
     } catch (e) {

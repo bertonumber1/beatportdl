@@ -235,3 +235,29 @@ def test_save_track_skip_and_update(tmp_path):
     cfg.track_exists = "update"
     with mock.patch("bpdl.download.download_file", side_effect=AssertionError("must not download")):
         assert save_track(client, track, str(tmp_path), cfg, active, lock) == first
+
+
+# ---- history: track-level watch helpers (artist watch-list) ----
+
+def _history_at(tmp_path):
+    from bpdl import history
+    history._db_path = tmp_path / "history.sqlite3"
+    history.init_db()
+    return history
+
+
+def test_track_baseline_is_seen_but_not_downloaded(tmp_path):
+    history = _history_at(tmp_path)
+    # a fresh track is neither seen nor downloaded
+    assert not history.is_track_seen(555)
+    assert not history.is_track_downloaded(555)
+    # baselining marks it seen (so artist watch won't treat old catalogue as new)
+    # without counting as a real download
+    history.mark_track_baseline(555, 99, "Old Track", "Some Artist", "Old EP", "Some Label")
+    assert history.is_track_seen(555)
+    assert not history.is_track_downloaded(555)
+
+
+def test_track_seen_ignores_zero_id(tmp_path):
+    history = _history_at(tmp_path)
+    assert not history.is_track_seen(0)

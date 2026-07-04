@@ -164,6 +164,32 @@ def mark_release_baseline(release_id: int, release_name: str, label: str, reason
     )
 
 
+def is_track_seen(track_id: int) -> bool:
+    """True if we have any record at all (any status) for this track — the
+    track-level analogue of is_release_seen, used by the artist watch-list to
+    decide whether a track has already been evaluated (downloaded or baselined).
+    Artist watch works per-track (an artist can appear on a compilation without
+    the whole release being ours to grab), so it needs track-granular seen-state
+    rather than release-granular."""
+    if not track_id:
+        return False
+    with _db() as conn:
+        row = conn.execute("SELECT 1 FROM downloads WHERE track_id = ? LIMIT 1", (track_id,)).fetchone()
+        return row is not None
+
+
+def mark_track_baseline(track_id: int, release_id: int, track_name: str, artists: str,
+                        release_name: str, label: str, reason: str = "baseline (predates watch)") -> None:
+    """Marks a single track as 'seen' without downloading it — the track-level
+    analogue of mark_release_baseline, used when a watched artist is checked for
+    the first time so their existing back-catalogue isn't mistaken for new work."""
+    record(
+        track_id=track_id, release_id=release_id, store="", track_name=track_name, artists=artists,
+        release_name=release_name, label=label, genre="", subgenre="", bpm=0, key="",
+        quality="", file_path="", status=STATUS_SKIPPED, reason=reason,
+    )
+
+
 def add_pending_release(release_id: int, label_url: str, release_name: str, expected_date: str) -> None:
     with _db() as conn:
         conn.execute(
