@@ -24,9 +24,7 @@ html { background: var(--bg); }
 
 body {
   margin: 0;
-  /* transparent: the actual page background is the fixed wallpaper layer
-     below (body::before) over the dark html canvas — an opaque background
-     here would paint on top of it and hide it. */
+  /* transparent so the fixed dark gradient layer below (body::before) shows. */
   background: transparent;
   color: var(--text);
   font-family: var(--font);
@@ -34,20 +32,16 @@ body {
   overflow-x: hidden;
 }
 
-/* Full-page skull-and-crossbones wallpaper. The source art is a high-res
-   landscape flag (2400x1292), so `cover` fills the whole viewport sharply with
-   no blur needed. A dark gradient overlay sits on top so the app's text and
-   cards keep contrast while the flag still reads through clearly. The radial
-   layer keeps the old subtle blue-grey glow at the top of the page. */
+/* Clean full-page dark background: a deep gradient from a faint blue-grey at the
+   top down to near-black, with a soft glow behind the hero. No imagery. */
 body::before {
   content: "";
   position: fixed;
   inset: 0;
   z-index: -1;
   background:
-    radial-gradient(ellipse at top, rgba(16, 20, 24, 0.45) 0%, transparent 55%),
-    linear-gradient(rgba(10, 10, 10, 0.55), rgba(10, 10, 10, 0.72)),
-    url("/static/wallpaper-pirate.jpg") center / cover no-repeat;
+    radial-gradient(ellipse 1200px 620px at 50% -8%, rgba(60, 82, 120, 0.16) 0%, transparent 68%),
+    linear-gradient(180deg, #0d1117 0%, #0a0a0a 100%);
   pointer-events: none;
 }
 

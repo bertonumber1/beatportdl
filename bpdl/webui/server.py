@@ -36,7 +36,7 @@ from bpdl.scanner import for_paginated, rank_map, sanitize_params, scan_artist, 
 from bpdl.search import extract_store_tag
 
 STATIC_DIR = Path(__file__).parent / "static"
-VERSION = "2.3.1"
+VERSION = "2.3.2"
 
 bus = EventBus()
 
@@ -915,7 +915,7 @@ def main() -> None:
     banner = (
         "\n"
         "  ============================================================\n"
-        "     Smash-n-Grab  ·  BP-DL  is running\n"
+        "     Unspok3n  ·  BP-DL  is running\n"
         "  ------------------------------------------------------------\n"
         f"     Open this address in your web browser:\n"
         f"         {url}\n"
