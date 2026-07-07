@@ -13,31 +13,12 @@
 <body>
 <div id="app">
 
-  <!-- spray-through-stencil roughening for the hero wordmark: turbulence
-       displaces the glyph edges so they read as hand-sprayed rather than clean -->
-  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
-    <filter id="graffiti-rough">
-      <feTurbulence type="fractalNoise" baseFrequency="0.028 0.035" numOctaves="2" seed="7" result="noise"/>
-      <feDisplacementMap in="SourceGraphic" in2="noise" scale="4" xChannelSelector="R" yChannelSelector="G"/>
-    </filter>
-  </svg>
-
   <div id="hero">
     <div id="hero-glow"></div>
     <div id="hero-logo-wrap">
       <h1 id="hero-logo">Unspok3n</h1>
-      <span class="drip d1" aria-hidden="true"></span>
-      <span class="drip d2" aria-hidden="true"></span>
-      <span class="drip d3" aria-hidden="true"></span>
-      <span class="drip d4" aria-hidden="true"></span>
-      <span class="drip d5" aria-hidden="true"></span>
     </div>
     <p id="hero-tagline">Beatport / Beatsource downloader</p>
-    <div id="hero-badges">
-      <img src="/static/mascot-parrot.svg" class="hero-badge-icon" alt="" title="the crew">
-      <span class="hero-badge-text">Made in Scotland</span>
-      <img src="/static/flag-scotland.png" class="hero-badge-icon hero-flag" alt="Scotland flag">
-    </div>
   </div>
 
   <header id="topbar">

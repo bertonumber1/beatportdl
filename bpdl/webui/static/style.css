@@ -32,16 +32,19 @@ body {
   overflow-x: hidden;
 }
 
-/* Clean full-page dark background: a deep gradient from a faint blue-grey at the
-   top down to near-black, with a soft glow behind the hero. No imagery. */
+/* Awesome deep-dark background with a cold, glacial feel to match the icy logo:
+   a wide icy-blue aurora glow up top, a faint cyan counter-glow lower right, all
+   over a near-black gradient with a subtle vignette so the edges fall away. */
 body::before {
   content: "";
   position: fixed;
   inset: 0;
   z-index: -1;
   background:
-    radial-gradient(ellipse 1200px 620px at 50% -8%, rgba(60, 82, 120, 0.16) 0%, transparent 68%),
-    linear-gradient(180deg, #0d1117 0%, #0a0a0a 100%);
+    radial-gradient(1100px 560px at 50% -10%, rgba(90, 160, 240, 0.20) 0%, transparent 62%),
+    radial-gradient(820px 620px at 88% 108%, rgba(60, 200, 220, 0.10) 0%, transparent 60%),
+    radial-gradient(120% 120% at 50% 40%, transparent 58%, rgba(0, 0, 0, 0.55) 100%),
+    linear-gradient(180deg, #0b1220 0%, #0a0f18 45%, #070a10 100%);
   pointer-events: none;
 }
 
@@ -60,64 +63,31 @@ body::before {
 #hero-glow {
   position: absolute; top: -40%; left: 50%; transform: translateX(-50%);
   width: 900px; height: 480px;
-  background: radial-gradient(ellipse at center, rgba(214,40,40,0.12) 0%, rgba(120,110,90,0.06) 40%, transparent 70%);
+  background: radial-gradient(ellipse at center, rgba(120,190,255,0.16) 0%, rgba(80,140,210,0.07) 40%, transparent 70%);
   pointer-events: none;
 }
-/* Street-stencil wordmark: heavy condensed upright type roughed up by the
-   #graffiti-rough SVG filter so the edges read as spray-through-stencil. Bone
-   fill matches the flag's skull; hard black outline + offset is the stencil,
-   the red haze is spray overspray — reads as urban vandal, not clean UI blue. */
+/* Icy frosted wordmark: heavy clean type filled with a white-to-ice vertical
+   gradient, a fine frost highlight along the top edge, and a soft glacial glow.
+   Smart and cold — no stencil, no drips, no outline. */
 #hero-logo {
   position: relative;
   margin: 0; text-align: center;
-  font-family: "Impact", "Haettenschweiler", "Franklin Gothic Bold", "Arial Black", sans-serif;
-  font-size: 78px; font-weight: 900; letter-spacing: 1px;
+  font-family: "Segoe UI", "Helvetica Neue", "Arial", sans-serif;
+  font-size: 78px; font-weight: 800; letter-spacing: 3px;
   text-transform: uppercase;
-  color: #ece3d0;
-  -webkit-text-stroke: 2px #0a0a0a;
-  text-shadow:
-    3px 3px 0 #0a0a0a,
-    0 0 6px rgba(0,0,0,0.9),
-    0 0 26px rgba(214,40,40,0.4),
-    0 0 46px rgba(214,40,40,0.18);
-  filter: url(#graffiti-rough);
+  background: linear-gradient(180deg, #ffffff 0%, #dcefff 38%, #8fc6f2 70%, #5a9fe0 100%);
+  -webkit-background-clip: text; background-clip: text;
+  -webkit-text-fill-color: transparent; color: transparent;
+  filter:
+    drop-shadow(0 1px 0 rgba(255,255,255,0.6))
+    drop-shadow(0 0 18px rgba(135,200,255,0.5))
+    drop-shadow(0 8px 26px rgba(30,80,140,0.4));
 }
-/* Paint runs dribbling off the wordmark. The wrap is inline-block so its width
-   tracks the text, letting each drip's % offset sit roughly under a letter; each
-   is a bone-coloured run with a rounded end and a heavier bulb (::after) where
-   the paint pooled, roughened by the same stencil filter. */
 #hero-logo-wrap { position: relative; display: inline-block; margin-bottom: 16px; }
-.drip {
-  position: absolute; top: 88%;
-  width: 6px; background: #ece3d0;
-  border-radius: 0 0 3px 3px;
-  filter: url(#graffiti-rough);
-  box-shadow: 0 0 5px rgba(0,0,0,0.55);
-  pointer-events: none;
-}
-.drip::after {
-  content: ""; position: absolute; left: 50%; bottom: -5px;
-  width: 10px; height: 11px; background: #ece3d0; border-radius: 50%;
-  transform: translateX(-50%);
-}
-.drip.d1 { left: 14%; height: 24px; }
-.drip.d2 { left: 31%; height: 40px; }
-.drip.d3 { left: 49%; height: 15px; width: 5px; }
-.drip.d4 { left: 64%; height: 33px; }
-.drip.d5 { left: 83%; height: 21px; }
 #hero-tagline {
   position: relative;
   margin: 14px 0 0; color: var(--muted); font-size: 14px; letter-spacing: 0.5px;
 }
-#hero-badges {
-  position: relative;
-  margin-top: 16px; display: flex; align-items: center; gap: 10px;
-  padding: 6px 14px; border-radius: 999px; border: 1px solid var(--border-light);
-  background: var(--surface);
-}
-.hero-badge-icon { width: 22px; height: 22px; border-radius: 4px; object-fit: cover; }
-.hero-badge-icon.hero-flag { width: 28px; height: 18px; border-radius: 3px; }
-.hero-badge-text { font-size: 12.5px; color: var(--muted); font-weight: 600; letter-spacing: 0.3px; }
 
 @keyframes hero-in {
   from { opacity: 0; transform: translateY(-8px); }

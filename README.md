@@ -139,3 +139,15 @@ involved.
   let a pasted URL with its own `page=`/`per_page=` query params send pagination into an
   infinite loop. Both are fixed (`v2.2.0`) and confirmed against a real 250-release/253-track
   label end to end: 253/253 downloaded, 0 skipped, 0 failed, matching real files on disk exactly.
+
+## Credits & thanks
+
+Enormous thanks to **[unspok3n](https://github.com/unspok3n)** for the original
+**[BeatportDL](https://github.com/unspok3n/beatportdl)** — the Go project this web UI is built
+on. All the hard groundwork (the Beatport/Beatsource API integration, the download and tagging
+logic, the filtering rules) is theirs; this rewrite simply reshapes it into a browser app.
+
+unspok3n's original is excellent and **actively developed** — they keep shipping great new
+features, so go **star it, follow it, and use it**: <https://github.com/unspok3n/beatportdl>
+
+This project stands entirely on that foundation. 🙏
