@@ -82,6 +82,11 @@ def _retry_get(url: str, timeout: int = 40, attempts: int = 4) -> requests.Respo
             if resp.status_code in (429, 500, 502, 503, 504) and attempt < attempts - 1:
                 time.sleep(1.5 * (attempt + 1))
                 continue
+            if resp.status_code == 404:
+                # Beatport's API can issue a signed asset URL for a file that
+                # doesn't exist on their CDN (no encode was ever produced) —
+                # retrying, or trying another quality, never helps.
+                raise RuntimeError("file missing on Beatport's servers (CDN 404) — track is not downloadable")
             raise RuntimeError(f"bad status: {resp.status_code}")
         except requests.RequestException as e:
             last_exc = e
@@ -91,26 +96,43 @@ def _retry_get(url: str, timeout: int = 40, attempts: int = 4) -> requests.Respo
     raise RuntimeError(f"download failed after {attempts} attempts: {last_exc}")
 
 
-def download_file(url: str, destination: str, on_progress=None) -> None:
+def download_file(url: str, destination: str, on_progress=None, attempts: int = 3) -> None:
     """Atomic download: streams to a .part file, then renames on success —
-    an interrupted download never leaves a corrupt file at the final path."""
+    an interrupted download never leaves a corrupt file at the final path.
+    The whole transfer is retried on mid-stream failures (SSL record errors,
+    connection resets, short reads): the VPN link drops a stream now and then,
+    and a fresh attempt almost always succeeds."""
     tmp_path = destination + ".part"
-    resp = _retry_get(url)
-    total = int(resp.headers.get("Content-Length") or 0)
-    downloaded = 0
-    try:
-        with open(tmp_path, "wb") as out:
-            for chunk in resp.iter_content(chunk_size=1024 * 256):
-                out.write(chunk)
-                downloaded += len(chunk)
-                if on_progress:
-                    on_progress(downloaded, total)
-    except BaseException:
-        Path(tmp_path).unlink(missing_ok=True)
-        raise
-    # replace(), not rename(): with track_exists="overwrite" the destination may
-    # already exist, and rename() refuses to overwrite on Windows.
-    Path(tmp_path).replace(destination)
+    last_exc: Exception | None = None
+    for attempt in range(attempts):
+        resp = _retry_get(url)
+        total = int(resp.headers.get("Content-Length") or 0)
+        downloaded = 0
+        try:
+            with open(tmp_path, "wb") as out:
+                for chunk in resp.iter_content(chunk_size=1024 * 256):
+                    out.write(chunk)
+                    downloaded += len(chunk)
+                    if on_progress:
+                        on_progress(downloaded, total)
+            if total and downloaded < total:
+                raise requests.RequestException(
+                    f"short read: got {downloaded} of {total} bytes")
+        except (requests.RequestException, OSError) as e:
+            Path(tmp_path).unlink(missing_ok=True)
+            last_exc = e
+            if attempt < attempts - 1:
+                time.sleep(2.0 * (attempt + 1))
+                continue
+            raise RuntimeError(f"transfer failed after {attempts} attempts: {e}") from e
+        except BaseException:
+            Path(tmp_path).unlink(missing_ok=True)
+            raise
+        # replace(), not rename(): with track_exists="overwrite" the destination may
+        # already exist, and rename() refuses to overwrite on Windows.
+        Path(tmp_path).replace(destination)
+        return
+    raise RuntimeError(f"transfer failed after {attempts} attempts: {last_exc}")
 
 
 def download_cover(image_url: str, downloads_dir: str) -> str:

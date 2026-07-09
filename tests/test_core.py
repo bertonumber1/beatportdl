@@ -162,10 +162,30 @@ def test_download_file_cleans_up_part_on_failure(tmp_path):
         yield  # pragma: no cover
 
     resp.iter_content = boom
-    with mock.patch("bpdl.download._retry_get", return_value=resp):
-        with pytest.raises(IOError):
+    with mock.patch("bpdl.download._retry_get", return_value=resp), \
+         mock.patch("bpdl.download.time.sleep"):
+        with pytest.raises(RuntimeError, match="transfer failed after"):
             download_file(str(dest), str(dest))
     assert not dest.exists()
+    assert not (tmp_path / "track.flac.part").exists()
+
+
+def test_download_file_retries_broken_stream(tmp_path):
+    # A transient mid-stream failure (VPN SSL hiccup, connection reset) must not
+    # fail the track: the next attempt gets a fresh response and completes.
+    dest = tmp_path / "track.flac"
+
+    def broken(chunk_size):
+        yield b"partial"
+        raise IOError("ssl record layer failure")
+
+    bad = _fake_response(b"")
+    bad.iter_content = broken
+    good = _fake_response(b"full content")
+    with mock.patch("bpdl.download._retry_get", side_effect=[bad, good]), \
+         mock.patch("bpdl.download.time.sleep"):
+        download_file(str(dest), str(dest))
+    assert dest.read_bytes() == b"full content"
     assert not (tmp_path / "track.flac.part").exists()
 
 
