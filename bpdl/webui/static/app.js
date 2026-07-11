@@ -150,9 +150,11 @@ function renderQueue() {
   $("#start-btn").classList.toggle("hidden", !!state.status?.downloading);
   $("#stop-btn").classList.toggle("hidden", !state.status?.downloading);
 
+  updateQueueSelCount();
   state.queue.forEach((item, idx) => {
     const card = document.createElement("div");
-    card.className = "card";
+    card.className = "card queue-card";
+    card.dataset.idx = idx;
     card.innerHTML = `
       <div class="card-art" style="${artStyle(item.name, item.cover)}">${item.cover ? "" : initials(item.name)}</div>
       <div class="card-body">
@@ -163,11 +165,22 @@ function renderQueue() {
       ${item.needs_wizard === false && (item.type === "labels" || item.type === "artists") ? '<button class="card-edit" title="Edit filters">&#9998;</button>' : ""}
       <button class="card-remove" title="Remove">&times;</button>
     `;
-    card.querySelector(".card-remove").addEventListener("click", () => removeQueueItem(idx));
+    card.querySelector(".card-remove").addEventListener("click", (e) => { e.stopPropagation(); removeQueueItem(idx); });
     const editBtn = card.querySelector(".card-edit");
-    if (editBtn) editBtn.addEventListener("click", () => openWizard(idx, item.url));
+    if (editBtn) editBtn.addEventListener("click", (e) => { e.stopPropagation(); openWizard(idx, item.url); });
+    card.addEventListener("click", () => {
+      card.classList.toggle("selected");
+      updateQueueSelCount();
+    });
     grid.appendChild(card);
   });
+}
+
+function updateQueueSelCount() {
+  const n = document.querySelectorAll("#queue-grid .queue-card.selected").length;
+  const btn = $("#remove-selected-btn");
+  btn.classList.toggle("hidden", n === 0);
+  btn.textContent = `Remove ${n} selected`;
 }
 
 async function removeQueueItem(idx) {
@@ -178,6 +191,27 @@ async function removeQueueItem(idx) {
   } catch (e) {
     showToast(`Failed to remove: ${e.message}`, "error");
   }
+}
+
+async function removeSelectedQueueItems() {
+  const idxs = Array.from(document.querySelectorAll("#queue-grid .queue-card.selected"))
+    .map((c) => Number(c.dataset.idx))
+    .sort((a, b) => b - a); // delete from the end so earlier indexes stay valid
+  if (!idxs.length) return;
+  $("#remove-selected-btn").disabled = true;
+  try {
+    let data = null;
+    for (const idx of idxs) {
+      data = await api("DELETE", `/api/queue/${idx}`);
+    }
+    if (data) state.queue = data.queue;
+    showToast(`Removed ${idxs.length} item(s) from the queue.`, "success");
+  } catch (e) {
+    showToast(`Failed to remove: ${e.message}`, "error");
+    try { state.queue = (await api("GET", "/api/status")).queue || []; } catch (_) {}
+  }
+  $("#remove-selected-btn").disabled = false;
+  renderQueue();
 }
 
 // ---- adding items ----
@@ -226,10 +260,11 @@ function openSearchModal() {
       <div class="card-body">
         <div class="card-badge">${esc(r.kind)}</div>
         <div class="card-name" title="${esc(r.name)}">${esc(r.name)}</div>
-        <div class="card-subtitle" title="${esc(r.subtitle)}">${esc(r.subtitle)}</div>
+        <div class="card-subtitle" title="${esc(r.subtitle)}">${(r.artists && r.artists.length) ? artistLinksHtml({ artists: r.artists, label: r.label, artist: r.subtitle }) : esc(r.subtitle)}</div>
       </div>
     `;
     if (r.preview) card.appendChild(makePreviewBtn(r.preview));
+    wireCatalogueLinks(card);
     card.addEventListener("click", () => card.classList.toggle("selected"));
     grid.appendChild(card);
   });
@@ -407,16 +442,19 @@ function formatBytes(n) {
   return `${v.toFixed(v >= 10 || i === 0 ? 0 : 1)} ${units[i]}`;
 }
 
-async function openStatsModal() {
+async function openStatsModal(days) {
   $("#stats-modal").classList.remove("hidden");
   let stats;
   try {
-    stats = await api("GET", "/api/stats");
+    stats = await api("GET", "/api/stats" + (days ? `?days=${days}` : ""));
   } catch (e) {
     $("#stats-tiles").innerHTML = `<p class="muted small">Failed to load stats: ${esc(e.message)}</p>`;
     return;
   }
 
+  const sc = stats.status_counts || {};
+  const attempts = (sc.downloaded || 0) + (sc.failed || 0);
+  const successRate = attempts ? ((sc.downloaded || 0) / attempts) * 100 : null;
   const tiles = $("#stats-tiles");
   tiles.innerHTML = `
     <div class="stats-tile"><div class="stats-tile-value">${formatNum(stats.total_tracks)}</div><div class="stats-tile-label">Tracks</div></div>
@@ -424,12 +462,17 @@ async function openStatsModal() {
     <div class="stats-tile"><div class="stats-tile-value">${formatNum(stats.total_labels)}</div><div class="stats-tile-label">Labels</div></div>
     <div class="stats-tile"><div class="stats-tile-value">${formatNum(stats.total_artists)}</div><div class="stats-tile-label">Artists</div></div>
     <div class="stats-tile"><div class="stats-tile-value">${formatBytes(stats.total_bytes)}</div><div class="stats-tile-label">Downloaded</div></div>
+    <div class="stats-tile"><div class="stats-tile-value">${successRate === null ? "—" : successRate.toFixed(1) + "%"}</div><div class="stats-tile-label">Success rate</div></div>
+    <div class="stats-tile"><div class="stats-tile-value">${formatNum(sc.failed || 0)}</div><div class="stats-tile-label">Failed</div></div>
   `;
 
   renderHBars($("#stats-genres"), stats.genres, "name", "count");
   renderHBars($("#stats-artists"), stats.artists, "name", "count");
   renderHBars($("#stats-labels"), stats.labels, "name", "count");
+  renderHBars($("#stats-subgenres"), stats.subgenres, "name", "count");
+  renderHBars($("#stats-failures"), stats.failure_reasons, "name", "count", null, 8);
   const shortMonth = (m) => `${m.slice(5)}/${m.slice(2, 4)}`; // 2026-07 -> 07/26
+  renderColumns($("#stats-daily"), (stats.activity_by_day || []).slice(-30), "day", "count", null, 2, (d) => d.slice(8));
   renderColumns($("#stats-bpm"), stats.bpm_buckets, "range", "count", null, 2, (r) => r.split("-")[0]);
   renderColumns($("#stats-keys"), stats.keys, "name", "count");
   renderColumns($("#stats-activity"), (stats.activity_by_month || []).slice(-24), "month", "count", null, 1, shortMonth);
@@ -1066,6 +1109,7 @@ function wireEvents() {
       $("#stop-btn").disabled = false;
     }
   });
+  $("#remove-selected-btn").addEventListener("click", removeSelectedQueueItems);
   $("#clear-queue-btn").addEventListener("click", async () => {
     try {
       const data = await api("POST", "/api/queue/clear");
@@ -1102,7 +1146,16 @@ function wireEvents() {
   $("#setup-form").addEventListener("submit", submitSetupForm);
   $("#settings-btn").addEventListener("click", openSettingsModal);
   $(".settings-close").addEventListener("click", () => $("#settings-modal").classList.add("hidden"));
-  $("#stats-btn").addEventListener("click", openStatsModal);
+  const statsDays = () => {
+    const sel = document.querySelector(".stats-range-btn.selected");
+    return sel && sel.dataset.days ? Number(sel.dataset.days) : null;
+  };
+  $("#stats-btn").addEventListener("click", () => openStatsModal(statsDays()));
+  $$(".stats-range-btn").forEach((b) => b.addEventListener("click", () => {
+    $$(".stats-range-btn").forEach((x) => x.classList.remove("selected"));
+    b.classList.add("selected");
+    openStatsModal(statsDays());
+  }));
   $(".stats-close").addEventListener("click", () => $("#stats-modal").classList.add("hidden"));
   $("#settings-save-btn").addEventListener("click", saveSettingsModal);
   $(".search-close").addEventListener("click", () => $("#search-modal").classList.add("hidden"));
@@ -1247,6 +1300,7 @@ function wireCatalogueLinks(card) {
 // already tolerates wizardQueueIndex being null).
 async function openCatalogue(url, title) {
   state.wizardQueueIndex = null;
+  $("#search-modal").classList.add("hidden"); // don't stack modals if opened from search
   const modal = $("#wizard-modal");
   modal.dataset.url = url;
   ["#wizard-scope", "#wizard-scanning", "#wizard-results", "#wizard-browse"]

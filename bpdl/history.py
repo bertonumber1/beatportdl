@@ -319,14 +319,43 @@ def get_recent(limit: int = 50) -> list[dict]:
         return [dict(r) for r in rows]
 
 
-def get_stats() -> dict:
+def _failure_bucket(reason: str) -> str:
+    """Collapse raw failure messages into a handful of readable causes."""
+    r = (reason or "").lower()
+    if "404" in r:
+        return "Missing on Beatport's CDN (404)"
+    if "ssl" in r or "incompleteread" in r or "connection" in r and "timed out" not in r:
+        return "Connection / SSL drop"
+    if "timed out" in r or "timeout" in r:
+        return "Timeout"
+    if "file name too long" in r:
+        return "Filename too long"
+    return "Other"
+
+
+def get_stats(since: str | None = None) -> dict:
+    """Aggregate library stats; `since` (ISO date/datetime) limits the window."""
+    window = " AND downloaded_at >= ?" if since else ""
+    args: tuple = (since,) if since else ()
     with _db() as conn:
         conn.row_factory = sqlite3.Row
         rows = conn.execute(
             "SELECT genre, subgenre, artists, label, bpm, key, quality, downloaded_at, release_id, "
-            "file_size_bytes FROM downloads WHERE status = ?",
-            (STATUS_DOWNLOADED,),
+            f"file_size_bytes FROM downloads WHERE status = ?{window}",
+            (STATUS_DOWNLOADED, *args),
         ).fetchall()
+        status_rows = conn.execute(
+            "SELECT status, reason FROM downloads"
+            + (" WHERE downloaded_at >= ?" if since else ""),
+            args,
+        ).fetchall()
+
+    status_counts: Counter[str] = Counter()
+    failure_reasons: Counter[str] = Counter()
+    for srow in status_rows:
+        status_counts[srow["status"]] += 1
+        if srow["status"] == STATUS_FAILED:
+            failure_reasons[_failure_bucket(srow["reason"])] += 1
 
     genres: Counter[str] = Counter()
     subgenres: Counter[str] = Counter()
@@ -335,6 +364,7 @@ def get_stats() -> dict:
     keys: Counter[str] = Counter()
     quality: Counter[str] = Counter()
     months: Counter[str] = Counter()
+    days: Counter[str] = Counter()
     bpm_buckets: Counter[str] = Counter()
     releases: set[int] = set()
 
@@ -363,6 +393,7 @@ def get_stats() -> dict:
                 artists[a] += 1
         if row["downloaded_at"]:
             months[row["downloaded_at"][:7]] += 1
+            days[row["downloaded_at"][:10]] += 1
 
         size = row["file_size_bytes"] or 0
         total_bytes += size
@@ -400,7 +431,10 @@ def get_stats() -> dict:
         "labels": top(labels, 20),
         "keys": top(keys, 24),
         "quality": top(quality, 5),
+        "status_counts": dict(status_counts),
+        "failure_reasons": top(failure_reasons, 8),
         "activity_by_month": sorted(({"month": k, "count": v} for k, v in months.items()), key=lambda x: x["month"]),
+        "activity_by_day": sorted(({"day": k, "count": v} for k, v in days.items()), key=lambda x: x["day"]),
         "bpm_buckets": sorted(
             ({"range": k, "count": v} for k, v in bpm_buckets.items()),
             key=lambda x: int(x["range"].split("-")[0]),

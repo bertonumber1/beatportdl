@@ -6,7 +6,7 @@ import queue
 import threading
 import time
 from contextlib import asynccontextmanager
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
@@ -37,7 +37,7 @@ from bpdl.scanner import for_paginated, rank_map, sanitize_params, scan_artist, 
 from bpdl.search import extract_store_tag
 
 STATIC_DIR = Path(__file__).parent / "static"
-VERSION = "2.4.1"
+VERSION = "2.4.2"
 
 bus = EventBus()
 
@@ -377,15 +377,23 @@ def add_to_queue(payload: QueueAddPayload) -> dict:
         pass
     try:
         search_data = client.search(trimmed)
+        def artist_refs(artists: list[dict]) -> list[dict]:
+            return [{"id": a.get("id"), "name": a.get("name", ""), "slug": a.get("slug", "")} for a in artists]
+
+        def label_ref(label) -> dict | None:
+            return {"id": label.id, "name": label.name, "slug": label.slug} if (label and label.id) else None
+
         for t in search_data["tracks"][:15]:
             artists = ", ".join(a.get("name", "") for a in t.artists[:3])
             cover = t.release.image.formatted_url("300x300") if t.release.image.dynamic_uri else ""
             name = f"{t.name} ({t.mix_name})" if t.mix_name else t.name
-            results.append({"kind": "track", "name": name, "url": t.store_url(), "subtitle": artists, "cover": cover, "preview": t.sample_url})
+            results.append({"kind": "track", "name": name, "url": t.store_url(), "subtitle": artists, "cover": cover, "preview": t.sample_url,
+                            "artists": artist_refs(t.artists), "label": label_ref(t.release.label if t.release else None)})
         for r in search_data["releases"][:15]:
             artists = ", ".join(a.get("name", "") for a in r.artists[:3])
             cover = r.image.formatted_url("300x300") if r.image.dynamic_uri else ""
-            results.append({"kind": "release", "name": r.name, "url": r.store_url(), "subtitle": f"{artists} [{r.label.name}]", "cover": cover})
+            results.append({"kind": "release", "name": r.name, "url": r.store_url(), "subtitle": f"{artists} [{r.label.name}]", "cover": cover,
+                            "artists": artist_refs(r.artists), "label": label_ref(r.label)})
     except Exception:
         pass
     return {"search_results": results}
@@ -1156,8 +1164,11 @@ def _watch_scheduler_loop() -> None:
 # ---- stats -----------------------------------------------------------------
 
 @app.get("/api/stats")
-def get_stats() -> dict:
-    return history.get_stats()
+def get_stats(days: int | None = None) -> dict:
+    since = None
+    if days and days > 0:
+        since = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+    return history.get_stats(since)
 
 
 # ---- history / library maintenance -----------------------------------------------------------------
