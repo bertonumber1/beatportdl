@@ -84,6 +84,13 @@ body::before {
     drop-shadow(0 8px 26px rgba(30,80,140,0.4));
 }
 #hero-logo-wrap { position: relative; display: inline-block; margin-bottom: 16px; }
+#hero-remix {
+  position: absolute; right: -10px; bottom: -16px; transform: rotate(-3deg);
+  font-size: 14px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase;
+  color: #e5484d; text-shadow: 0 0 10px rgba(229,72,77,0.55);
+  pointer-events: none; white-space: nowrap;
+}
+@media (max-width: 700px) { #hero-remix { font-size: 11px; bottom: -12px; } }
 #hero-tagline {
   position: relative;
   margin: 14px 0 0; color: var(--muted); font-size: 14px; letter-spacing: 0.5px;
@@ -390,3 +397,75 @@ input:focus, select:focus {
   .settings-form.grid .field.checkbox { grid-column: span 1; }
   .wizard-columns { grid-template-columns: 1fr; }
 }
+
+/* ---- browse & pick individual releases ---- */
+.wizard-browse-head, .wizard-browse-foot {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+}
+.wizard-browse-foot { margin-top: 14px; }
+.browse-pager { display: flex; align-items: center; gap: 10px; }
+.btn.small { padding: 6px 12px; font-size: 13px; }
+.browse-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: 10px; max-height: 52vh; overflow-y: auto; padding: 4px 2px; margin-top: 10px;
+}
+.browse-card {
+  position: relative; display: flex; gap: 10px; align-items: center;
+  background: var(--surface-2); border: 1px solid var(--border-light);
+  border-radius: var(--radius); padding: 8px; cursor: pointer;
+  transition: border-color .12s, box-shadow .12s;
+}
+.browse-card:hover { border-color: var(--accent); }
+.browse-card.selected { border-color: var(--success); box-shadow: 0 0 0 2px var(--success-dim); }
+.browse-cover { width: 52px; height: 52px; border-radius: 6px; object-fit: cover; flex: 0 0 auto; }
+.browse-cover.placeholder { background: var(--surface); border: 1px solid var(--border); }
+.browse-info { min-width: 0; flex: 1; }
+.browse-title { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.browse-artist, .browse-meta { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.browse-check {
+  position: absolute; top: 6px; right: 8px; color: var(--success);
+  font-weight: 700; opacity: 0; transition: opacity .12s;
+}
+.browse-card.selected .browse-check { opacity: 1; }
+
+/* ---- track preview play button (overlays the cover art) ---- */
+.preview-btn {
+  position: absolute; border: none; cursor: pointer; z-index: 2;
+  display: flex; align-items: center; justify-content: center;
+  color: #fff; font-size: 17px; line-height: 1; padding: 0;
+  background: linear-gradient(to right, rgba(88,166,255,0.45) var(--pv, 0%), rgba(0,0,0,0.55) var(--pv, 0%));
+  opacity: 0; transition: opacity .12s;
+}
+.browse-card .preview-btn { left: 8px; top: 50%; transform: translateY(-50%); width: 52px; height: 52px; border-radius: 6px; }
+.card .preview-btn { left: 12px; top: 12px; width: 56px; height: 56px; border-radius: 7px; }
+.browse-card:hover .preview-btn, .card:hover .preview-btn, .preview-btn.playing { opacity: 1; }
+.preview-btn:hover { color: var(--accent); }
+
+/* ---- clickable artist/label names -> catalogue view ---- */
+.linkish { cursor: pointer; }
+.linkish:hover { color: var(--accent); text-decoration: underline; }
+
+/* ---- explore (storefront) ---- */
+.tab-row { display: flex; gap: 6px; }
+.explore-tab.selected { border-color: var(--accent); color: var(--accent); }
+.field.explore-tabs { flex: 0 0 auto; }
+#explore-body { margin-bottom: 24px; }
+
+/* ---- faceted filter panel ---- */
+.filter-controls {
+  display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px; margin-bottom: 12px;
+}
+.filter-controls .field { display: flex; flex-direction: column; gap: 4px; flex: 1 1 150px; }
+.filter-controls .field.narrow { flex: 0 0 88px; }
+.filter-controls label { font-size: 12px; color: var(--muted); }
+.filter-controls input, .filter-controls select {
+  background: var(--surface); border: 1px solid var(--border-light); color: var(--text);
+  border-radius: 8px; padding: 8px 10px; font-size: 14px; width: 100%;
+}
+.filter-controls input:focus, .filter-controls select:focus {
+  border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-dim); outline: none;
+}
+.filter-controls #filter-apply-btn { flex: 0 0 auto; }
+.filter-h { font-size: 13px; margin: 6px 0; }
+#filter-artists-wrap { margin-bottom: 10px; max-height: 22vh; overflow-y: auto; }
+.browse-pager .selpage { display: inline-flex; align-items: center; gap: 5px; margin-left: 10px; }

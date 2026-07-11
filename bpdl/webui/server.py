@@ -10,6 +10,7 @@ from datetime import date, datetime, timezone
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -36,7 +37,7 @@ from bpdl.scanner import for_paginated, rank_map, sanitize_params, scan_artist, 
 from bpdl.search import extract_store_tag
 
 STATIC_DIR = Path(__file__).parent / "static"
-VERSION = "2.3.3"
+VERSION = "2.4.0"
 
 bus = EventBus()
 
@@ -100,6 +101,32 @@ def _login_background() -> None:
         bus.publish({"type": "login_status", "status": "error", "error": str(e)})
 
 
+def _queue_file() -> Path | None:
+    return state.config_path.parent / "bpdl-queue.json" if state.config_path else None
+
+
+def _publish_queue() -> None:
+    """Persist the queue to disk (so it survives restarts) and notify the UI."""
+    qf = _queue_file()
+    if qf:
+        try:
+            qf.write_text(json.dumps(state.queue), encoding="utf-8")
+        except OSError:
+            pass
+    bus.publish({"type": "queue_updated", "queue": state.queue})
+
+
+def _restore_queue() -> None:
+    qf = _queue_file()
+    if qf and qf.exists():
+        try:
+            items = json.loads(qf.read_text(encoding="utf-8"))
+            if isinstance(items, list):
+                state.queue = items
+        except (OSError, ValueError):
+            pass
+
+
 def _init_history_background() -> None:
     try:
         history.init_db()
@@ -113,6 +140,7 @@ def _init_history_background() -> None:
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     _load_config()
+    _restore_queue()
     threading.Thread(target=_init_history_background, daemon=True).start()
     if _configured():
         threading.Thread(target=_login_background, daemon=True).start()
@@ -121,12 +149,35 @@ async def lifespan(_app: FastAPI):
 
 
 app = FastAPI(title="BP-DL Web", lifespan=lifespan)
+# Browser extensions (the bp-dl grabber) call the API cross-origin; Brave in
+# particular still sends CORS preflights for extension fetches, so OPTIONS must
+# succeed. Local trusted server, no cookies/credentials involved → allow any origin.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 
+from fastapi.responses import HTMLResponse
+
+# Cache-bust static assets per deploy: browsers happily reuse a stale cached
+# app.js/style.css across container rebuilds otherwise (assets have no version
+# in their URLs). Stamp the asset URLs with the files' mtime at startup.
+_ASSET_STAMP = str(int(max(
+    (STATIC_DIR / "app.js").stat().st_mtime,
+    (STATIC_DIR / "style.css").stat().st_mtime,
+)))
+
+
 @app.get("/")
-def index() -> FileResponse:
-    return FileResponse(str(STATIC_DIR / "index.html"))
+def index() -> HTMLResponse:
+    html = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
+    html = html.replace('href="/static/style.css"', f'href="/static/style.css?v={_ASSET_STAMP}"')
+    html = html.replace('src="/static/app.js"', f'src="/static/app.js?v={_ASSET_STAMP}"')
+    return HTMLResponse(html)
 
 
 # ---- status -----------------------------------------------------------------
@@ -287,7 +338,12 @@ def add_to_queue(payload: QueueAddPayload) -> dict:
     if not raw:
         raise HTTPException(400, "empty input")
 
-    if raw.startswith("https://www.beatport.com") or raw.startswith("https://www.beatsource.com"):
+    # Treat any recognisable store/API URL as a link (not a search): parse_url
+    # also accepts api.beatport.com/api.beatsource.com URLs, which is what the
+    # catalog endpoints emit — matching only www.* used to misroute those into
+    # the search branch, so cherry-picked tracks/releases silently never queued.
+    if raw.startswith(("https://www.beatport.com", "https://www.beatsource.com",
+                       "https://api.beatport.com", "https://api.beatsource.com")):
         try:
             link = parse_url(raw)
         except Exception as e:
@@ -307,7 +363,7 @@ def add_to_queue(payload: QueueAddPayload) -> dict:
             **meta,
         }
         state.queue.append(item)
-        bus.publish({"type": "queue_updated", "queue": state.queue})
+        _publish_queue()
         return {"added": item}
 
     store_tag, trimmed = extract_store_tag(raw)
@@ -325,11 +381,11 @@ def add_to_queue(payload: QueueAddPayload) -> dict:
             artists = ", ".join(a.get("name", "") for a in t.artists[:3])
             cover = t.release.image.formatted_url("300x300") if t.release.image.dynamic_uri else ""
             name = f"{t.name} ({t.mix_name})" if t.mix_name else t.name
-            results.append({"kind": "track", "name": name, "url": t.url, "subtitle": artists, "cover": cover})
+            results.append({"kind": "track", "name": name, "url": t.store_url(), "subtitle": artists, "cover": cover, "preview": t.sample_url})
         for r in search_data["releases"][:15]:
             artists = ", ".join(a.get("name", "") for a in r.artists[:3])
             cover = r.image.formatted_url("300x300") if r.image.dynamic_uri else ""
-            results.append({"kind": "release", "name": r.name, "url": r.url, "subtitle": f"{artists} [{r.label.name}]", "cover": cover})
+            results.append({"kind": "release", "name": r.name, "url": r.store_url(), "subtitle": f"{artists} [{r.label.name}]", "cover": cover})
     except Exception:
         pass
     return {"search_results": results}
@@ -353,7 +409,7 @@ def set_filters(index: int, payload: FiltersPayload) -> dict:
     else:
         state.queue[index]["filters"] = payload.model_dump(exclude={"bypass"})
     state.queue[index]["needs_wizard"] = False
-    bus.publish({"type": "queue_updated", "queue": state.queue})
+    _publish_queue()
     return {"item": state.queue[index]}
 
 
@@ -361,14 +417,14 @@ def set_filters(index: int, payload: FiltersPayload) -> dict:
 def remove_from_queue(index: int) -> dict:
     if 0 <= index < len(state.queue):
         state.queue.pop(index)
-        bus.publish({"type": "queue_updated", "queue": state.queue})
+        _publish_queue()
     return {"queue": state.queue}
 
 
 @app.post("/api/queue/clear")
 def clear_queue() -> dict:
     state.queue.clear()
-    bus.publish({"type": "queue_updated", "queue": state.queue})
+    _publish_queue()
     return {"queue": state.queue}
 
 
@@ -401,6 +457,273 @@ def peek(payload: PeekPayload) -> dict:
     except Exception as e:
         raise HTTPException(400, f"Failed to check size: {e}") from e
     return {"count": None, "kind": None}
+
+
+class BrowsePayload(BaseModel):
+    url: str
+    page: int = 1
+
+
+@app.post("/api/browse")
+def browse(payload: BrowsePayload) -> dict:
+    """List a label's releases (or an artist's tracks) one page at a time, so the
+    user can eyeball what's there and cherry-pick — no full-catalogue scan. Each
+    page is a single Beatport API call (fast), unlike /api/scan which walks every
+    release's tracks to build filter facets."""
+    from bpdl.models import display_artists
+
+    _require_login()
+    try:
+        link = parse_url(payload.url)
+    except Exception as e:
+        raise HTTPException(400, str(e)) from e
+    if link.type not in (LABEL_LINK, ARTIST_LINK):
+        raise HTTPException(400, "browse only supports label/artist URLs")
+    client = _client_for(link.store)
+    params = sanitize_params(link.params)
+    page = max(1, payload.page)
+    try:
+        if link.type == LABEL_LINK:
+            pg = client.get_label_releases(link.id, page, params)
+            items = [{
+                "name": r.name,
+                "artist": display_artists(r.artists, 3),
+                "catno": r.catalog_number,
+                "date": r.date,
+                "year": r.year(),
+                "track_count": r.track_count,
+                "url": r.store_url(),
+                "cover": r.image.formatted_url("150x150") if r.image.dynamic_uri else "",
+            } for r in pg.results]
+            kind = "releases"
+        else:
+            pg = client.get_artist_tracks(link.id, page, params)
+            items = [{
+                "name": f"{t.name} ({t.mix_name})" if t.mix_name else t.name,
+                "artist": display_artists(t.artists, 3),
+                "catno": t.release.catalog_number if t.release else "",
+                "date": t.publish_date,
+                "year": t.publish_date[:4] if len(t.publish_date) >= 4 else "",
+                "track_count": 0,
+                "url": t.store_url(),
+                "cover": t.release.image.formatted_url("150x150") if (t.release and t.release.image.dynamic_uri) else "",
+            } for t in pg.results]
+            kind = "tracks"
+    except Exception as e:
+        raise HTTPException(400, f"Failed to browse: {e}") from e
+    return {
+        "items": items,
+        "page": page,
+        "count": pg.count or 0,
+        "has_next": bool(pg.next),
+        "has_prev": page > 1,
+        "kind": kind,
+    }
+
+
+@app.get("/api/genres")
+def genres() -> dict:
+    """Beatport's top-level genre list — populates the filter dropdown. Cheap,
+    one API call; genres are store-wide (not label-specific)."""
+    _require_login()
+    try:
+        data = state.bp._get("/catalog/genres/?per_page=200")
+    except Exception as e:
+        raise HTTPException(400, f"Failed to load genres: {e}") from e
+    gl = sorted(({"id": g.get("id"), "name": g.get("name")} for g in data.get("results", [])), key=lambda x: (x["name"] or "").lower())
+    return {"genres": gl}
+
+
+@app.get("/api/subgenres/{genre_id}")
+def subgenres(genre_id: int) -> dict:
+    _require_login()
+    try:
+        data = state.bp._get(f"/catalog/genres/{genre_id}/sub-genres/?per_page=200")
+    except Exception as e:
+        raise HTTPException(400, f"Failed to load sub-genres: {e}") from e
+    sl = sorted(({"id": s.get("id"), "name": s.get("name")} for s in data.get("results", [])), key=lambda x: (x["name"] or "").lower())
+    return {"subgenres": sl}
+
+
+class FilterPayload(BaseModel):
+    url: str
+    genre_id: int | None = None
+    sub_genre_id: int | None = None
+    bpm_min: int | None = None
+    bpm_max: int | None = None
+    artist_ids: list[int] = []
+    order_by: str = "-publish_date"
+    page: int = 1
+    want_facet: bool = False
+
+
+_FACET_CAP_PAGES = 5   # ≤500 filtered tracks scanned to build the artist tick-list
+
+
+def _track_item(t) -> dict:
+    """Uniform track payload for any track grid (filter shortlist, explore lists)."""
+    from bpdl.models import display_artists
+
+    return {
+        "id": t.id,
+        "name": f"{t.name} ({t.mix_name})" if t.mix_name else t.name,
+        "artist": display_artists(t.artists, 3),
+        "bpm": t.bpm,
+        "genre": t.genre.name if t.genre else "",
+        "key": t.key.name if getattr(t, "key", None) else "",
+        "length": f"{t.length_ms // 60000}:{(t.length_ms // 1000) % 60:02d}" if t.length_ms else "",
+        "year": t.publish_date[:4] if len(t.publish_date or "") >= 4 else "",
+        "url": t.store_url(),
+        "cover": t.release.image.formatted_url("150x150") if (t.release and t.release.image.dynamic_uri) else "",
+        "preview": t.sample_url,
+        "artists": [{"id": a.get("id"), "name": a.get("name", ""), "slug": a.get("slug", "")}
+                    for a in (t.artists or [])],
+        "label": ({"id": t.release.label.id, "name": t.release.label.name, "slug": t.release.label.slug}
+                  if (t.release and t.release.label and t.release.label.id) else None),
+    }
+
+
+@app.post("/api/filter")
+def filter_tracks(payload: FilterPayload) -> dict:
+    """Server-side faceted filtering, the way Beatport's own site does it: filter a
+    label's (or artist's) TRACKS by bpm range + genre + sub-genre + artist(s), all
+    applied by Beatport — we just page the already-narrowed result. `want_facet`
+    additionally returns the distinct-artist tick-list across the filtered set."""
+    from urllib.parse import quote
+    from bpdl.models import Track, display_artists
+
+    _require_login()
+    try:
+        link = parse_url(payload.url)
+    except Exception as e:
+        raise HTTPException(400, str(e)) from e
+    if link.type not in (LABEL_LINK, ARTIST_LINK):
+        raise HTTPException(400, "filter only supports label/artist URLs")
+
+    base = [f"label_id={link.id}"] if link.type == LABEL_LINK else [f"artist_id={link.id}"]
+    if payload.genre_id:
+        base.append(f"genre_id={payload.genre_id}")
+    if payload.sub_genre_id:
+        base.append(f"sub_genre_id={payload.sub_genre_id}")
+    if payload.bpm_min and payload.bpm_max:
+        base.append(f"bpm={payload.bpm_min}:{payload.bpm_max}")
+    if payload.artist_ids and link.type == LABEL_LINK:
+        base.append("artist_id=" + ",".join(str(a) for a in payload.artist_ids))
+    base.append(f"order_by={quote(payload.order_by or '-publish_date')}")
+    qs = "&".join(base)
+
+    try:
+        page = max(1, payload.page)
+        pg = state.bp._paginated(f"/catalog/tracks/?{qs}&per_page=100&page={page}", Track)
+        items = [_track_item(t) for t in pg.results]
+
+        facet = None
+        if payload.want_facet and link.type == LABEL_LINK:
+            counts: dict[int, list] = {}
+            p = 1
+            while p <= _FACET_CAP_PAGES:
+                fp = pg if p == page == 1 else state.bp._paginated(
+                    f"/catalog/tracks/?{qs}&per_page=100&page={p}",
+                    Track)
+                for t in fp.results:
+                    for a in (t.artists or []):
+                        aid = a.get("id")
+                        if aid is None:
+                            continue
+                        rec = counts.setdefault(aid, [a.get("name", ""), 0])
+                        rec[1] += 1
+                if not fp.next:
+                    break
+                p += 1
+            facet = sorted(
+                ({"id": aid, "name": v[0], "count": v[1]} for aid, v in counts.items()),
+                key=lambda x: -x["count"])
+    except Exception as e:
+        raise HTTPException(400, f"Filter failed: {e}") from e
+
+    return {
+        "tracks": items,
+        "count": pg.count or 0,
+        "page": page,
+        "has_next": bool(pg.next),
+        "has_prev": page > 1,
+        "artists": facet,
+    }
+
+
+class ExplorePayload(BaseModel):
+    section: str = "top100"  # top100 | tracks | releases | charts
+    genre_id: int | None = None
+    bpm_min: int | None = None
+    bpm_max: int | None = None
+    page: int = 1
+
+
+@app.post("/api/explore")
+def explore(payload: ExplorePayload) -> dict:
+    """Storefront browsing, like beatport.com's own home/genre pages: genre Top 100
+    (or the overall Beatport Top 100), newest releases, and DJ charts — every item
+    queueable by its store URL."""
+    from bpdl.models import Chart, Release, Track, _store_url, display_artists
+
+    _require_login()
+    page = max(1, payload.page)
+    g = f"genre_id={payload.genre_id}&" if payload.genre_id else ""
+    try:
+        if payload.section == "top100":
+            path = (f"/catalog/genres/{payload.genre_id}/top/100/?per_page=100"
+                    if payload.genre_id else "/catalog/tracks/top/100/?per_page=100")
+            pg = state.bp._paginated(path, Track)
+            return {"kind": "tracks", "items": [_track_item(t) for t in pg.results],
+                    "count": pg.count or 0, "page": 1, "has_next": False, "has_prev": False}
+
+        if payload.section == "tracks":
+            bpm = (f"bpm={payload.bpm_min}:{payload.bpm_max}&"
+                   if payload.bpm_min and payload.bpm_max else "")
+            pg = state.bp._paginated(
+                f"/catalog/tracks/?{g}{bpm}order_by=-publish_date"
+                f"&publish_date=:{date.today().isoformat()}&per_page=50&page={page}", Track)
+            return {"kind": "tracks", "items": [_track_item(t) for t in pg.results],
+                    "count": pg.count or 0, "page": page,
+                    "has_next": bool(pg.next), "has_prev": page > 1}
+
+        if payload.section == "releases":
+            # publish_date=:today (colon range, like bpm) excludes pre-orders —
+            # plain -publish_date sorting puts future-dated releases first
+            pg = state.bp._paginated(
+                f"/catalog/releases/?{g}order_by=-publish_date"
+                f"&publish_date=:{date.today().isoformat()}&per_page=50&page={page}", Release)
+            items = [{
+                "name": r.name,
+                "artist": display_artists(r.artists, 3),
+                "catno": r.catalog_number,
+                "date": r.date,
+                "year": r.year(),
+                "track_count": r.track_count,
+                "url": r.store_url(),
+                "cover": r.image.formatted_url("150x150") if r.image.dynamic_uri else "",
+            } for r in pg.results]
+            return {"kind": "releases", "items": items, "count": pg.count or 0,
+                    "page": page, "has_next": bool(pg.next), "has_prev": page > 1}
+
+        if payload.section == "charts":
+            pg = state.bp._paginated(
+                f"/catalog/charts/?{g}order_by=-publish_date&per_page=50&page={page}", Chart)
+            items = [{
+                "name": c.name,
+                "artist": c.owner_name,
+                "date": c.publish_date,
+                "track_count": c.track_count,
+                "url": _store_url(c.id, "chart", c.slug, "beatport"),
+                "cover": c.image.formatted_url("150x150") if c.image.dynamic_uri else "",
+            } for c in pg.results]
+            return {"kind": "charts", "items": items, "count": pg.count or 0,
+                    "page": page, "has_next": bool(pg.next), "has_prev": page > 1}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(400, f"Explore failed: {e}") from e
+    raise HTTPException(400, f"unknown section: {payload.section}")
 
 
 class ScanPayload(BaseModel):
@@ -492,7 +815,12 @@ def _run_download() -> None:
             # Re-scan the live queue each iteration for the next item we haven't
             # done yet. This is how mid-run additions get processed, and it's
             # robust to items being removed from the queue underneath us.
-            item = next((q for q in state.queue if id(q) not in processed_ids), None)
+            # Skip items still awaiting the wizard: a label/artist added mid-run
+            # keeps needs_wizard=True (and filters=None) until the user finishes
+            # scoping it. Grabbing one here would _apply_filters(None) and pull
+            # the ENTIRE unfiltered catalogue out from under the filter picker.
+            item = next((q for q in state.queue
+                         if id(q) not in processed_ids and not q.get("needs_wizard")), None)
             if item is None:
                 break
 
@@ -529,7 +857,7 @@ def _run_download() -> None:
         _apply_filters(None)
         state.downloading = False
         state.stop_requested = False
-        bus.publish({"type": "queue_updated", "queue": state.queue})
+        _publish_queue()
         bus.publish({
             "type": "batch_done",
             "downloaded": total_downloaded,
@@ -557,6 +885,8 @@ def start_download() -> dict:
         raise HTTPException(400, "a download is already running")
     if not state.queue:
         raise HTTPException(400, "queue is empty")
+    if not any(not q.get("needs_wizard") for q in state.queue):
+        raise HTTPException(400, "finish choosing filters (or 'queue everything') before starting")
     threading.Thread(target=_run_download, daemon=True).start()
     return {"started": True}
 

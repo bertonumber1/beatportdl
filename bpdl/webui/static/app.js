@@ -9,6 +9,7 @@ const state = {
   wizardQueueIndex: null,
   wizardScan: null, // {genres, subgenres, artists} rank entries with .selected
   searchResults: [],
+  explore: { section: "top100", page: 1, kind: "tracks", selected: new Map(), _rendered: [], loaded: false },
   activity: new Map(), // track id -> card element
   runCounts: { downloaded: 0, skipped: 0, failed: 0 },
   failedTracks: [],
@@ -39,6 +40,46 @@ function initials(name) {
 // breaks title="..." attributes and card markup. Escape at every interpolation.
 function esc(s) {
   return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+}
+
+// ---- preview player (Beatport's public ~2-min samples; one at a time) ----
+
+const preview = { audio: new Audio(), btn: null };
+preview.audio.preload = "none";
+preview.audio.addEventListener("ended", stopPreview);
+preview.audio.addEventListener("error", stopPreview);
+preview.audio.addEventListener("timeupdate", () => {
+  if (!preview.btn || !preview.audio.duration) return;
+  preview.btn.style.setProperty("--pv", `${(preview.audio.currentTime / preview.audio.duration) * 100}%`);
+});
+
+function stopPreview() {
+  preview.audio.pause();
+  if (preview.btn) {
+    preview.btn.classList.remove("playing");
+    preview.btn.textContent = "▶";
+    preview.btn.style.removeProperty("--pv");
+  }
+  preview.btn = null;
+}
+
+function makePreviewBtn(url) {
+  const b = document.createElement("button");
+  b.type = "button";
+  b.className = "preview-btn";
+  b.title = "Play preview";
+  b.textContent = "▶";
+  b.addEventListener("click", (e) => {
+    e.stopPropagation(); // don't toggle the card's selection
+    if (preview.btn === b) { stopPreview(); return; }
+    stopPreview();
+    preview.audio.src = url;
+    preview.audio.play().catch(() => stopPreview());
+    preview.btn = b;
+    b.classList.add("playing");
+    b.textContent = "❚❚";
+  });
+  return b;
 }
 
 function hueFor(name) {
@@ -188,6 +229,7 @@ function openSearchModal() {
         <div class="card-subtitle" title="${esc(r.subtitle)}">${esc(r.subtitle)}</div>
       </div>
     `;
+    if (r.preview) card.appendChild(makePreviewBtn(r.preview));
     card.addEventListener("click", () => card.classList.toggle("selected"));
     grid.appendChild(card);
   });
@@ -219,10 +261,12 @@ function openWizard(queueIndex, url) {
   state.wizardScan = null;
   const item = state.queue[queueIndex];
   $("#wizard-title").textContent = "What do you want to queue?";
-  $("#wizard-scope-name").textContent = `"${item ? item.name : url}" — queue the whole thing now, or scan first to filter by genre/subgenre/artist/date.`;
+  $("#wizard-scope-name").textContent = `"${item ? item.name : url}" — browse and pick individual releases, filter the catalogue, or queue the whole thing.`;
   $("#wizard-scope").classList.remove("hidden");
   $("#wizard-scanning").classList.add("hidden");
   $("#wizard-results").classList.add("hidden");
+  $("#wizard-browse").classList.add("hidden");
+  $("#wizard-filter").classList.add("hidden");
   $("#wizard-modal").classList.remove("hidden");
   $("#wizard-modal").dataset.url = url;
 
@@ -373,6 +417,259 @@ async function confirmWizard(bypass) {
   state.queue[idx] = data.item;
   renderQueue();
   $("#wizard-modal").classList.add("hidden");
+}
+
+// ---- browse & pick individual releases ----
+
+function startWizardBrowse(url) {
+  state.browse = { url, page: 1, selected: new Map() };
+  $("#wizard-title").textContent = "Browse & pick releases";
+  $("#wizard-scope").classList.add("hidden");
+  $("#wizard-browse").classList.remove("hidden");
+  loadBrowsePage(1);
+}
+
+async function loadBrowsePage(page) {
+  const grid = $("#wizard-browse-grid");
+  $("#wizard-browse-status").textContent = "Loading…";
+  grid.innerHTML = "";
+  try {
+    const data = await api("POST", "/api/browse", { url: state.browse.url, page });
+    state.browse.page = data.page;
+    $("#wizard-browse-status").textContent =
+      `${data.count} ${data.kind} in this catalogue — tap to select the ones you want.`;
+    $("#wizard-browse-page").textContent = `Page ${data.page}`;
+    $("#wizard-browse-prev").disabled = !data.has_prev;
+    $("#wizard-browse-next").disabled = !data.has_next;
+    data.items.forEach((it) => {
+      const sel = state.browse.selected.has(it.url);
+      const card = document.createElement("div");
+      card.className = "browse-card" + (sel ? " selected" : "");
+      const meta = [it.catno, it.year, it.track_count ? `${it.track_count} trk` : ""]
+        .filter(Boolean).join(" · ");
+      card.innerHTML = `
+        ${it.cover ? `<img class="browse-cover" src="${esc(it.cover)}" loading="lazy">`
+                   : `<div class="browse-cover placeholder"></div>`}
+        <div class="browse-info">
+          <div class="browse-title">${esc(it.name)}</div>
+          <div class="browse-artist muted small">${esc(it.artist)}</div>
+          <div class="browse-meta muted small">${esc(meta)}</div>
+        </div>
+        <div class="browse-check">✓</div>`;
+      card.addEventListener("click", () => {
+        if (state.browse.selected.has(it.url)) state.browse.selected.delete(it.url);
+        else state.browse.selected.set(it.url, it.name);
+        card.classList.toggle("selected");
+        updateBrowseSelCount();
+      });
+      grid.appendChild(card);
+    });
+    updateBrowseSelCount();
+  } catch (e) {
+    $("#wizard-browse-status").textContent = `Failed to load: ${e.message}`;
+  }
+}
+
+function updateBrowseSelCount() {
+  const n = state.browse.selected.size;
+  $("#wizard-browse-selcount").textContent = `${n} selected`;
+  $("#wizard-browse-add").disabled = n === 0;
+  $("#wizard-browse-add").textContent = n ? `Add ${n} to queue` : "Add selected to queue";
+}
+
+async function addBrowseSelected() {
+  const picks = Array.from(state.browse.selected.entries());
+  if (!picks.length) return;
+  $("#wizard-browse-add").disabled = true;
+  let added = 0;
+  for (const [url] of picks) {
+    try {
+      const data = await api("POST", "/api/queue", { input: url });
+      if (data.added) { state.queue.push(data.added); added++; }
+    } catch (e) {
+      showToast(`Failed to add one release: ${e.message}`, "error");
+    }
+  }
+  // drop the original label/artist item — we cherry-picked instead of queuing it whole
+  const idx = state.wizardQueueIndex;
+  if (idx !== null && state.queue[idx] && state.queue[idx].needs_wizard) {
+    try {
+      const data = await api("DELETE", `/api/queue/${idx}`);
+      state.queue = data.queue;
+    } catch (_) { /* leave it; not fatal */ }
+  }
+  renderQueue();
+  $("#wizard-modal").classList.add("hidden");
+  showToast(`Added ${added} release(s) to the queue.`, "success");
+}
+
+// ---- faceted filter (BPM / genre / sub-genre / artists), Beatport-style ----
+
+async function startWizardFilter(url) {
+  state.filter = { url, page: 1, selected: new Map(), selectedArtists: new Set() };
+  $("#wizard-title").textContent = "Filter by BPM / genre / artist";
+  $("#wizard-scope").classList.add("hidden");
+  $("#wizard-filter").classList.remove("hidden");
+  $("#filter-artists-wrap").classList.add("hidden");
+  $("#filter-grid").innerHTML = "";
+  $("#filter-status").textContent = "Set BPM and/or genre, then Apply.";
+  $("#filter-bpm-min").value = "";
+  $("#filter-bpm-max").value = "";
+  $("#filter-subgenre").innerHTML = '<option value="">Any sub-genre</option>';
+  updateFilterSelCount();
+  // populate genres once
+  const gsel = $("#filter-genre");
+  if (gsel.dataset.loaded !== "1") {
+    try {
+      const data = await api("GET", "/api/genres");
+      data.genres.forEach((g) => {
+        const o = document.createElement("option");
+        o.value = g.id; o.textContent = g.name;
+        gsel.appendChild(o);
+      });
+      gsel.dataset.loaded = "1";
+    } catch (e) { /* leave "Any genre" only */ }
+  }
+  gsel.value = "";
+}
+
+async function onGenreChange() {
+  const gid = $("#filter-genre").value;
+  const ssel = $("#filter-subgenre");
+  ssel.innerHTML = '<option value="">Any sub-genre</option>';
+  if (!gid) return;
+  try {
+    const data = await api("GET", `/api/subgenres/${gid}`);
+    data.subgenres.forEach((s) => {
+      const o = document.createElement("option");
+      o.value = s.id; o.textContent = s.name;
+      ssel.appendChild(o);
+    });
+  } catch (e) { /* leave "Any" */ }
+}
+
+function filterPayload(page, wantFacet) {
+  const f = state.filter;
+  const bmin = parseInt($("#filter-bpm-min").value, 10);
+  const bmax = parseInt($("#filter-bpm-max").value, 10);
+  return {
+    url: f.url,
+    genre_id: parseInt($("#filter-genre").value, 10) || null,
+    sub_genre_id: parseInt($("#filter-subgenre").value, 10) || null,
+    bpm_min: Number.isFinite(bmin) ? bmin : null,
+    bpm_max: Number.isFinite(bmax) ? bmax : null,
+    artist_ids: Array.from(f.selectedArtists),
+    page,
+    want_facet: wantFacet,
+  };
+}
+
+async function applyFilter(page = 1, wantFacet = true) {
+  const f = state.filter;
+  $("#filter-status").textContent = "Filtering…";
+  $("#filter-grid").innerHTML = "";
+  try {
+    const data = await api("POST", "/api/filter", filterPayload(page, wantFacet));
+    f.page = data.page;
+    $("#filter-status").textContent = `${data.count} matching track(s).` +
+      (data.count > 100 ? " Showing 100 per page." : "");
+    $("#filter-page").textContent = `Page ${data.page}`;
+    $("#filter-prev").disabled = !data.has_prev;
+    $("#filter-next").disabled = !data.has_next;
+    $("#filter-selectall").checked = false;
+    if (data.artists) renderFilterArtists(data.artists);
+    renderFilterGrid(data.tracks);
+  } catch (e) {
+    $("#filter-status").textContent = `Filter failed: ${e.message}`;
+  }
+}
+
+function renderFilterArtists(artists) {
+  const wrap = $("#filter-artists-wrap");
+  const box = $("#filter-artists");
+  box.innerHTML = "";
+  if (!artists.length) { wrap.classList.add("hidden"); return; }
+  wrap.classList.remove("hidden");
+  artists.forEach((a) => {
+    const chip = document.createElement("div");
+    chip.className = "chip" + (state.filter.selectedArtists.has(a.id) ? " selected" : "");
+    chip.innerHTML = `<span>${esc(a.name)}</span><span class="chip-count">${a.count}</span>`;
+    chip.addEventListener("click", () => {
+      if (state.filter.selectedArtists.has(a.id)) state.filter.selectedArtists.delete(a.id);
+      else state.filter.selectedArtists.add(a.id);
+      chip.classList.toggle("selected");
+      applyFilter(1, false); // re-filter server-side by artist, keep the facet as-is
+    });
+    box.appendChild(chip);
+  });
+}
+
+function renderFilterGrid(tracks) {
+  const grid = $("#filter-grid");
+  grid.innerHTML = "";
+  state.filter._rendered = tracks;
+  tracks.forEach((t) => {
+    const sel = state.filter.selected.has(t.url);
+    const card = document.createElement("div");
+    card.className = "browse-card" + (sel ? " selected" : "");
+    const meta = [t.bpm ? `${t.bpm} BPM` : "", t.key, t.genre, t.length, t.year].filter(Boolean).join(" · ");
+    card.innerHTML = `
+      ${t.cover ? `<img class="browse-cover" src="${esc(t.cover)}" loading="lazy">`
+                : `<div class="browse-cover placeholder"></div>`}
+      <div class="browse-info">
+        <div class="browse-title">${esc(t.name)}</div>
+        <div class="browse-artist muted small">${artistLinksHtml(t)}</div>
+        <div class="browse-meta muted small">${esc(meta)}</div>
+      </div>
+      <div class="browse-check">✓</div>`;
+    if (t.preview) card.appendChild(makePreviewBtn(t.preview));
+    wireCatalogueLinks(card);
+    card.addEventListener("click", () => {
+      if (state.filter.selected.has(t.url)) state.filter.selected.delete(t.url);
+      else state.filter.selected.set(t.url, t.name);
+      card.classList.toggle("selected");
+      updateFilterSelCount();
+    });
+    grid.appendChild(card);
+  });
+}
+
+function updateFilterSelCount() {
+  const n = state.filter.selected.size;
+  $("#filter-selcount").textContent = `${n} selected`;
+  $("#filter-add").disabled = n === 0;
+  $("#filter-add").textContent = n ? `Add ${n} to queue` : "Add selected to queue";
+}
+
+function toggleSelectPage(checked) {
+  const tracks = state.filter._rendered || [];
+  const cards = $("#filter-grid").querySelectorAll(".browse-card");
+  tracks.forEach((t, i) => {
+    if (checked) state.filter.selected.set(t.url, t.name);
+    else state.filter.selected.delete(t.url);
+    if (cards[i]) cards[i].classList.toggle("selected", checked);
+  });
+  updateFilterSelCount();
+}
+
+async function addFilterSelected() {
+  const picks = Array.from(state.filter.selected.entries());
+  if (!picks.length) return;
+  $("#filter-add").disabled = true;
+  let added = 0;
+  for (const [url] of picks) {
+    try {
+      const data = await api("POST", "/api/queue", { input: url });
+      if (data.added) { state.queue.push(data.added); added++; }
+    } catch (e) { showToast(`Failed to add a track: ${e.message}`, "error"); }
+  }
+  const idx = state.wizardQueueIndex;
+  if (idx !== null && state.queue[idx] && state.queue[idx].needs_wizard) {
+    try { const d = await api("DELETE", `/api/queue/${idx}`); state.queue = d.queue; } catch (_) {}
+  }
+  renderQueue();
+  $("#wizard-modal").classList.add("hidden");
+  showToast(`Added ${added} track(s) to the queue.`, "success");
 }
 
 // ---- activity / downloading ----
@@ -760,6 +1057,17 @@ function wireEvents() {
   $("#wizard-scope-confirm-checkbox").addEventListener("change", (e) => {
     $("#wizard-scope-all-btn").disabled = state.wizardLargeCatalogue && !e.target.checked;
   });
+  $("#wizard-scope-filterlive-btn").addEventListener("click", () => startWizardFilter($("#wizard-modal").dataset.url));
+  $("#filter-genre").addEventListener("change", onGenreChange);
+  $("#filter-apply-btn").addEventListener("click", () => { state.filter.selectedArtists.clear(); applyFilter(1, true); });
+  $("#filter-prev").addEventListener("click", () => applyFilter(state.filter.page - 1, false));
+  $("#filter-next").addEventListener("click", () => applyFilter(state.filter.page + 1, false));
+  $("#filter-selectall").addEventListener("change", (e) => toggleSelectPage(e.target.checked));
+  $("#filter-add").addEventListener("click", addFilterSelected);
+  $("#wizard-scope-browse-btn").addEventListener("click", () => startWizardBrowse($("#wizard-modal").dataset.url));
+  $("#wizard-browse-prev").addEventListener("click", () => loadBrowsePage(state.browse.page - 1));
+  $("#wizard-browse-next").addEventListener("click", () => loadBrowsePage(state.browse.page + 1));
+  $("#wizard-browse-add").addEventListener("click", addBrowseSelected);
   $("#wizard-scope-filter-btn").addEventListener("click", () => startWizardScan($("#wizard-modal").dataset.url));
   $("#wizard-bypass-btn").addEventListener("click", () => confirmWizard(true));
   $("#wizard-confirm-btn").addEventListener("click", () => confirmWizard(false));
@@ -828,6 +1136,207 @@ function wireEvents() {
       $("#watch-status").textContent = e.message;
     }
   });
+  $("#explore-toggle").addEventListener("click", toggleExplore);
+  $("#explore-genre").addEventListener("change", () => {
+    localStorage.setItem("exploreGenre", $("#explore-genre").value);
+    state.explore.selected.clear();
+    updateExploreSelCount();
+    loadExplore(1);
+  });
+  $$(".explore-tab").forEach((b) => b.addEventListener("click", () => {
+    $$(".explore-tab").forEach((x) => x.classList.remove("selected"));
+    b.classList.add("selected");
+    state.explore.section = b.dataset.section;
+    const bpmable = b.dataset.section === "tracks";
+    $$(".explore-bpm").forEach((f) => f.classList.toggle("hidden", !bpmable));
+    $("#explore-apply").classList.toggle("hidden", !bpmable);
+    state.explore.selected.clear();
+    updateExploreSelCount();
+    loadExplore(1);
+  }));
+  $("#explore-apply").addEventListener("click", () => loadExplore(1));
+  $("#explore-prev").addEventListener("click", () => loadExplore(state.explore.page - 1));
+  $("#explore-next").addEventListener("click", () => loadExplore(state.explore.page + 1));
+  $("#explore-selectall").addEventListener("change", (e) => toggleExploreSelectPage(e.target.checked));
+  $("#explore-add").addEventListener("click", addExploreSelected);
+  if (localStorage.getItem("exploreOpen")) toggleExplore(); // restore last session's open state
+}
+
+// ---- artist / label catalogue pages ----
+
+// Clickable artist/label names on track cards. Items carry {artists:[{id,name,slug}], label:{...}}
+// from _track_item; anything without an id/slug degrades to plain text.
+function artistLinksHtml(it) {
+  const bits = (it.artists || []).slice(0, 3).map((a) =>
+    a.id && a.slug
+      ? `<span class="linkish" data-kind="artist" data-id="${a.id}" data-slug="${esc(a.slug)}">${esc(a.name)}</span>`
+      : esc(a.name || ""));
+  let html = bits.filter(Boolean).join(", ") || esc(it.artist || "");
+  if (it.label && it.label.id && it.label.slug) {
+    html += ` <span class="linkish lbl" data-kind="label" data-id="${it.label.id}" data-slug="${esc(it.label.slug)}">[${esc(it.label.name)}]</span>`;
+  }
+  return html;
+}
+
+function wireCatalogueLinks(card) {
+  card.querySelectorAll(".linkish").forEach((el) => el.addEventListener("click", (e) => {
+    e.stopPropagation(); // don't toggle the card's selection
+    openCatalogue(
+      `https://www.beatport.com/${el.dataset.kind}/${el.dataset.slug}/${el.dataset.id}`,
+      el.textContent.replace(/^\[|\]$/g, ""));
+  }));
+}
+
+// The wizard's filter pane works off a bare URL, so it doubles as a standalone
+// artist/label catalogue page — no queue item involved (addFilterSelected
+// already tolerates wizardQueueIndex being null).
+async function openCatalogue(url, title) {
+  state.wizardQueueIndex = null;
+  const modal = $("#wizard-modal");
+  modal.dataset.url = url;
+  ["#wizard-scope", "#wizard-scanning", "#wizard-results", "#wizard-browse"]
+    .forEach((s) => $(s).classList.add("hidden"));
+  modal.classList.remove("hidden");
+  await startWizardFilter(url);
+  $("#wizard-title").textContent = title;
+  applyFilter(1, true); // show the full catalogue immediately; user narrows from there
+}
+
+// ---- explore (storefront: Top 100 / new tracks / new releases / DJ charts) ----
+
+async function toggleExplore() {
+  const body = $("#explore-body");
+  const open = !body.classList.toggle("hidden");
+  $("#explore-toggle").textContent = open ? "Hide ▴" : "Browse Beatport ▾";
+  localStorage.setItem("exploreOpen", open ? "1" : "");
+  if (open) {
+    await loadExploreGenres();
+    if (!state.explore.loaded) loadExplore(1);
+  } else {
+    stopPreview();
+  }
+}
+
+async function loadExploreGenres() {
+  const gsel = $("#explore-genre");
+  if (gsel.dataset.loaded) return;
+  try {
+    const data = await api("GET", "/api/genres");
+    data.genres.forEach((g) => {
+      const o = document.createElement("option");
+      o.value = g.id; o.textContent = g.name;
+      gsel.appendChild(o);
+    });
+    gsel.dataset.loaded = "1";
+    const saved = localStorage.getItem("exploreGenre");
+    // only restore if the option still exists (Beatport reshuffles genres occasionally)
+    if (saved && gsel.querySelector(`option[value="${saved}"]`)) gsel.value = saved;
+  } catch (e) { /* keep the "All genres" option only */ }
+}
+
+async function loadExplore(page) {
+  const ex = state.explore;
+  const genre = $("#explore-genre").value;
+  $("#explore-status").textContent = "Loading…";
+  try {
+    const bmin = parseInt($("#explore-bpm-min").value, 10);
+    const bmax = parseInt($("#explore-bpm-max").value, 10);
+    const data = await api("POST", "/api/explore", {
+      section: ex.section,
+      genre_id: genre ? Number(genre) : null,
+      bpm_min: ex.section === "tracks" && Number.isFinite(bmin) ? bmin : null,
+      bpm_max: ex.section === "tracks" && Number.isFinite(bmax) ? bmax : null,
+      page: Math.max(1, page),
+    });
+    ex.loaded = true;
+    ex.page = data.page;
+    ex.kind = data.kind;
+    renderExploreGrid(data.items);
+    const label = { top100: "in the Top 100", tracks: "new tracks", releases: "new releases", charts: "DJ charts" }[ex.section] || "";
+    $("#explore-status").textContent = `${data.count} ${label}`;
+    $("#explore-page").textContent = (data.has_prev || data.has_next) ? `page ${data.page}` : "";
+    $("#explore-prev").disabled = !data.has_prev;
+    $("#explore-next").disabled = !data.has_next;
+    $("#explore-selectall").checked = false;
+  } catch (e) {
+    $("#explore-status").textContent = e.message;
+  }
+}
+
+function exploreMeta(it) {
+  if (state.explore.kind === "tracks") {
+    return [it.bpm ? `${it.bpm} BPM` : "", it.key, it.genre, it.length, it.year].filter(Boolean).join(" · ");
+  }
+  const count = it.track_count ? `${it.track_count} track${it.track_count === 1 ? "" : "s"}` : "";
+  return [it.catno, count, it.date].filter(Boolean).join(" · ");
+}
+
+function renderExploreGrid(items) {
+  const grid = $("#explore-grid");
+  grid.innerHTML = "";
+  stopPreview();
+  state.explore._rendered = items;
+  items.forEach((it) => {
+    const sel = state.explore.selected.has(it.url);
+    const card = document.createElement("div");
+    card.className = "browse-card" + (sel ? " selected" : "");
+    card.innerHTML = `
+      ${it.cover ? `<img class="browse-cover" src="${esc(it.cover)}" loading="lazy">`
+                 : `<div class="browse-cover placeholder"></div>`}
+      <div class="browse-info">
+        <div class="browse-title">${esc(it.name)}</div>
+        <div class="browse-artist muted small">${artistLinksHtml(it)}</div>
+        <div class="browse-meta muted small">${esc(exploreMeta(it))}</div>
+      </div>
+      <div class="browse-check">✓</div>`;
+    if (it.preview) card.appendChild(makePreviewBtn(it.preview));
+    wireCatalogueLinks(card);
+    card.addEventListener("click", () => {
+      if (state.explore.selected.has(it.url)) state.explore.selected.delete(it.url);
+      else state.explore.selected.set(it.url, it.name);
+      card.classList.toggle("selected");
+      updateExploreSelCount();
+    });
+    grid.appendChild(card);
+  });
+}
+
+function updateExploreSelCount() {
+  const n = state.explore.selected.size;
+  $("#explore-selcount").textContent = `${n} selected`;
+  $("#explore-add").disabled = n === 0;
+  $("#explore-add").textContent = n ? `Add ${n} to queue` : "Add selected to queue";
+}
+
+function toggleExploreSelectPage(checked) {
+  const items = state.explore._rendered || [];
+  const cards = $("#explore-grid").querySelectorAll(".browse-card");
+  items.forEach((it, i) => {
+    if (checked) state.explore.selected.set(it.url, it.name);
+    else state.explore.selected.delete(it.url);
+    if (cards[i]) cards[i].classList.toggle("selected", checked);
+  });
+  updateExploreSelCount();
+}
+
+async function addExploreSelected() {
+  const picks = Array.from(state.explore.selected.entries());
+  if (!picks.length) return;
+  $("#explore-add").disabled = true;
+  let added = 0;
+  for (const [url, name] of picks) {
+    try {
+      const data = await api("POST", "/api/queue", { input: url });
+      if (data.added) { state.queue.push(data.added); added++; }
+    } catch (e) {
+      showToast(`Failed to add "${name}": ${e.message}`, "error");
+    }
+  }
+  state.explore.selected.clear();
+  updateExploreSelCount();
+  $("#explore-grid").querySelectorAll(".browse-card.selected").forEach((c) => c.classList.remove("selected"));
+  renderQueue();
+  if (added) showToast(`Added ${added} item(s) to queue — press Start downloading when ready.`, "success");
 }
 
 (async function main() {

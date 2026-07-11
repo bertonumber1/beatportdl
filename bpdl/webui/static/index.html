@@ -17,6 +17,7 @@
     <div id="hero-glow"></div>
     <div id="hero-logo-wrap">
       <h1 id="hero-logo">Unspok3n</h1>
+      <span id="hero-remix">Smash-n-Grab remix</span>
     </div>
     <p id="hero-tagline">Beatport / Beatsource downloader</p>
   </div>
@@ -84,6 +85,44 @@
       <p id="input-status" class="muted small"></p>
 
       <div class="section-head">
+        <h2>Explore <span class="muted small" id="explore-count"></span></h2>
+        <div class="section-actions">
+          <button id="explore-toggle" class="btn ghost small">Browse Beatport ▾</button>
+        </div>
+      </div>
+      <div id="explore-body" class="hidden">
+        <div class="filter-controls">
+          <div class="field"><label>Genre</label><select id="explore-genre"><option value="">All genres (Beatport Top 100)</option></select></div>
+          <div class="field explore-tabs">
+            <label>Show</label>
+            <div class="tab-row">
+              <button class="btn ghost small explore-tab selected" data-section="top100">Top 100</button>
+              <button class="btn ghost small explore-tab" data-section="tracks">New tracks</button>
+              <button class="btn ghost small explore-tab" data-section="releases">New releases</button>
+              <button class="btn ghost small explore-tab" data-section="charts">DJ charts</button>
+            </div>
+          </div>
+          <div class="field narrow explore-bpm hidden"><label>BPM min</label><input id="explore-bpm-min" type="number" min="0" max="400" placeholder="any"></div>
+          <div class="field narrow explore-bpm hidden"><label>BPM max</label><input id="explore-bpm-max" type="number" min="0" max="400" placeholder="any"></div>
+          <button id="explore-apply" class="btn primary hidden">Apply</button>
+        </div>
+        <div class="wizard-browse-head">
+          <p class="muted small" id="explore-status">Loading…</p>
+          <span class="muted small" id="explore-selcount">0 selected</span>
+        </div>
+        <div id="explore-grid" class="browse-grid"></div>
+        <div class="wizard-browse-foot">
+          <div class="browse-pager">
+            <button id="explore-prev" class="btn ghost small" disabled>&larr; Prev</button>
+            <span class="muted small" id="explore-page"></span>
+            <button id="explore-next" class="btn ghost small" disabled>Next &rarr;</button>
+            <label class="muted small selpage"><input type="checkbox" id="explore-selectall"> select page</label>
+          </div>
+          <button id="explore-add" class="btn success" disabled>Add selected to queue</button>
+        </div>
+      </div>
+
+      <div class="section-head">
         <h2>Queue <span id="queue-count" class="count-badge">0</span></h2>
         <div class="section-actions">
           <button id="clear-queue-btn" class="btn ghost small">Clear</button>
@@ -128,8 +167,52 @@
           I understand this is a large catalogue and want to queue all of it anyway
         </label>
         <div class="modal-actions" style="justify-content:flex-start;flex-direction:column;align-items:stretch;gap:10px;">
-          <button id="wizard-scope-all-btn" class="btn success">Queue everything now</button>
-          <button id="wizard-scope-filter-btn" class="btn ghost">Filter first (scan catalogue)</button>
+          <button id="wizard-scope-filterlive-btn" class="btn success">Filter by BPM / genre / artist</button>
+          <button id="wizard-scope-browse-btn" class="btn ghost">Browse &amp; pick individual releases</button>
+          <button id="wizard-scope-filter-btn" class="btn ghost">Filter by genre facets (full scan)</button>
+          <button id="wizard-scope-all-btn" class="btn ghost">Queue everything now</button>
+        </div>
+      </div>
+      <div id="wizard-filter" class="modal-body hidden">
+        <div class="filter-controls">
+          <div class="field narrow"><label>BPM min</label><input id="filter-bpm-min" type="number" min="0" max="400" placeholder="any"></div>
+          <div class="field narrow"><label>BPM max</label><input id="filter-bpm-max" type="number" min="0" max="400" placeholder="any"></div>
+          <div class="field"><label>Genre</label><select id="filter-genre"><option value="">Any genre</option></select></div>
+          <div class="field"><label>Sub-genre</label><select id="filter-subgenre"><option value="">Any sub-genre</option></select></div>
+          <button id="filter-apply-btn" class="btn primary">Apply</button>
+        </div>
+        <div id="filter-artists-wrap" class="hidden">
+          <h3 class="filter-h">Artists <span class="muted small">— tap to narrow</span></h3>
+          <div id="filter-artists" class="chip-list"></div>
+        </div>
+        <div class="wizard-browse-head">
+          <p class="muted small" id="filter-status">Set BPM and/or genre, then Apply.</p>
+          <span class="muted small" id="filter-selcount">0 selected</span>
+        </div>
+        <div id="filter-grid" class="browse-grid"></div>
+        <div class="wizard-browse-foot">
+          <div class="browse-pager">
+            <button id="filter-prev" class="btn ghost small" disabled>&larr; Prev</button>
+            <span class="muted small" id="filter-page"></span>
+            <button id="filter-next" class="btn ghost small" disabled>Next &rarr;</button>
+            <label class="muted small selpage"><input type="checkbox" id="filter-selectall"> select page</label>
+          </div>
+          <button id="filter-add" class="btn success" disabled>Add selected to queue</button>
+        </div>
+      </div>
+      <div id="wizard-browse" class="modal-body hidden">
+        <div class="wizard-browse-head">
+          <p class="muted small" id="wizard-browse-status">Loading…</p>
+          <span class="muted small" id="wizard-browse-selcount">0 selected</span>
+        </div>
+        <div id="wizard-browse-grid" class="browse-grid"></div>
+        <div class="wizard-browse-foot">
+          <div class="browse-pager">
+            <button id="wizard-browse-prev" class="btn ghost small" disabled>&larr; Prev</button>
+            <span class="muted small" id="wizard-browse-page"></span>
+            <button id="wizard-browse-next" class="btn ghost small" disabled>Next &rarr;</button>
+          </div>
+          <button id="wizard-browse-add" class="btn success" disabled>Add selected to queue</button>
         </div>
       </div>
       <div id="wizard-scanning" class="modal-body hidden">

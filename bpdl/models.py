@@ -234,6 +234,7 @@ class Track:
     publish_date: str = ""
     release: Release = field(default_factory=Release)
     url: str = ""
+    sample_url: str = ""
     store: str = "beatport"
 
     @classmethod
@@ -255,6 +256,7 @@ class Track:
             publish_date=data.get("publish_date", ""),
             release=Release.from_json(data.get("release") or {}, store) if data.get("release") else Release(),
             url=data.get("url", ""),
+            sample_url=data.get("sample_url") or "",
             store=store,
         )
 
