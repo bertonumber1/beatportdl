@@ -23,16 +23,18 @@
   </div>
 
   <header id="topbar">
-    <div id="brand">
-      <span id="brand-mark">BP</span><span id="brand-rest">·DL</span>
-    </div>
     <div id="topbar-right">
       <div id="conn-status" class="pill pending">
         <span class="dot"></span><span class="label">Starting…</span>
       </div>
-      <img src="/static/icon-anarchy.svg" class="anarchy-mark" alt="" title="Unspok3n's BP-DL">
-      <button id="stats-btn" class="icon-btn" title="Library stats">&#128202;</button>
-      <button id="settings-btn" class="icon-btn" title="Settings">&#9881;</button>
+      <button id="stats-btn" class="top-btn" title="Library stats">
+        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="5" y1="20" x2="5" y2="12"/><line x1="12" y1="20" x2="12" y2="5"/><line x1="19" y1="20" x2="19" y2="14"/></svg>
+        Stats
+      </button>
+      <button id="settings-btn" class="top-btn" title="Settings">
+        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="4" y1="8" x2="20" y2="8"/><circle cx="9.5" cy="8" r="2.4"/><line x1="4" y1="16" x2="20" y2="16"/><circle cx="14.5" cy="16" r="2.4"/></svg>
+        Settings
+      </button>
     </div>
   </header>
 
@@ -83,6 +85,20 @@
         <button id="add-btn" class="btn primary">Add</button>
       </div>
       <p id="input-status" class="muted small"></p>
+
+      <div class="section-head">
+        <h2>Release watch <span id="watch-count" class="count-badge">0</span></h2>
+        <div class="section-actions">
+          <button id="watch-check-now-btn" class="btn ghost small">Check now</button>
+        </div>
+      </div>
+      <p class="muted small watch-blurb">Watched labels get every new release grabbed automatically; watched artists get their new tracks. Check interval lives in Settings.</p>
+      <div class="watch-add-row">
+        <input id="watch-url-input" type="text" placeholder="Paste a label or artist URL to watch…">
+        <button id="watch-add-btn" class="btn ghost">Watch</button>
+      </div>
+      <div id="watch-list" class="chip-list"></div>
+      <p id="watch-status" class="muted small"></p>
 
       <div class="section-head">
         <h2>Explore <span class="muted small" id="explore-count"></span></h2>
@@ -368,19 +384,6 @@
             treated as duplicates of anything recorded before the clear.</p>
         </div>
 
-        <div class="maintenance-section">
-          <h3>Watched labels &amp; artists</h3>
-          <p class="muted small">Automatically checks watched labels (for new releases) and artists (for new tracks) on the interval set above, downloads anything new, and fires the notification webhook if configured.</p>
-          <div id="watch-list" class="chip-list" style="max-height:160px;"></div>
-          <div class="watch-add-row" style="display:flex;gap:10px;margin-top:12px;">
-            <input id="watch-url-input" type="text" placeholder="Paste a label or artist URL to watch..." style="flex:1;">
-            <button id="watch-add-btn" class="btn ghost">Watch</button>
-          </div>
-          <div class="modal-actions" style="justify-content:flex-start;margin-top:10px;">
-            <button id="watch-check-now-btn" class="btn ghost">Check now</button>
-          </div>
-          <p id="watch-status" class="muted small"></p>
-        </div>
       </div>
     </div>
   </div>
@@ -398,34 +401,34 @@
         <div class="stats-columns">
           <div class="stats-col">
             <h3>Top genres</h3>
-            <div id="stats-genres" class="chip-list"></div>
+            <div id="stats-genres" class="hbar-chart"></div>
           </div>
           <div class="stats-col">
             <h3>Top artists</h3>
-            <div id="stats-artists" class="chip-list"></div>
+            <div id="stats-artists" class="hbar-chart"></div>
           </div>
           <div class="stats-col">
             <h3>Top labels</h3>
-            <div id="stats-labels" class="chip-list"></div>
+            <div id="stats-labels" class="hbar-chart"></div>
           </div>
         </div>
 
-        <div class="stats-columns">
+        <div class="stats-columns two">
           <div class="stats-col">
             <h3>BPM distribution</h3>
-            <div id="stats-bpm" class="chip-list"></div>
+            <div id="stats-bpm" class="col-chart"></div>
           </div>
           <div class="stats-col">
             <h3>Key distribution</h3>
-            <div id="stats-keys" class="chip-list"></div>
+            <div id="stats-keys" class="col-chart"></div>
           </div>
         </div>
 
         <h3>Tracks downloaded per month</h3>
-        <div id="stats-activity" class="stats-timeline"></div>
+        <div id="stats-activity" class="col-chart"></div>
 
         <h3>Data downloaded per month</h3>
-        <div id="stats-volume" class="stats-timeline"></div>
+        <div id="stats-volume" class="col-chart"></div>
       </div>
     </div>
   </div>

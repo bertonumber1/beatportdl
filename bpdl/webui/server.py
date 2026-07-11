@@ -37,7 +37,7 @@ from bpdl.scanner import for_paginated, rank_map, sanitize_params, scan_artist, 
 from bpdl.search import extract_store_tag
 
 STATIC_DIR = Path(__file__).parent / "static"
-VERSION = "2.4.0"
+VERSION = "2.4.1"
 
 bus = EventBus()
 

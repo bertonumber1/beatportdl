@@ -325,19 +325,73 @@ function chipList(container, entries, selectedSet) {
   });
 }
 
-function renderStatBars(container, entries, labelKey, valueKey, formatValue) {
+// ---- stats charts (single measure everywhere -> one hue, values labeled) ----
+
+function formatNum(n) {
+  return Number(n).toLocaleString("en-GB");
+}
+
+// Shared floating tooltip for column charts (hbar rows label every value inline,
+// so only columns need it).
+function chartTip() {
+  let tip = document.getElementById("chart-tip");
+  if (!tip) {
+    tip = document.createElement("div");
+    tip.id = "chart-tip";
+    document.body.appendChild(tip);
+  }
+  return tip;
+}
+
+// Ranked horizontal bars: name | bar | value-at-tip. All one hue — the length
+// carries the magnitude, so coloring by value would just re-encode it.
+function renderHBars(container, entries, labelKey, valueKey, formatValue, limit = 12) {
   container.innerHTML = "";
-  if (!entries.length) {
+  if (!entries || !entries.length) {
+    container.innerHTML = '<p class="muted small">Nothing yet.</p>';
+    return;
+  }
+  const rows = entries.slice(0, limit);
+  const max = Math.max(...rows.map((e) => e[valueKey])) || 1;
+  rows.forEach((e) => {
+    const value = formatValue ? formatValue(e[valueKey]) : formatNum(e[valueKey]);
+    const row = document.createElement("div");
+    row.className = "hbar-row";
+    row.innerHTML = `
+      <span class="hbar-name" title="${esc(e[labelKey])}">${esc(e[labelKey])}</span>
+      <span class="hbar-track"><span class="hbar-fill" style="width:${Math.max(1.5, (e[valueKey] / max) * 100)}%"></span></span>
+      <span class="hbar-val">${esc(value)}</span>`;
+    container.appendChild(row);
+  });
+}
+
+// Column chart for ordered distributions (BPM buckets, keys, months).
+// Peak column gets an inline value; the tooltip carries the rest.
+function renderColumns(container, entries, labelKey, valueKey, formatValue, labelEvery = 1, tickFmt = null) {
+  container.innerHTML = "";
+  if (!entries || !entries.length) {
     container.innerHTML = '<p class="muted small">Nothing yet.</p>';
     return;
   }
   const max = Math.max(...entries.map((e) => e[valueKey])) || 1;
-  entries.forEach((e) => {
-    const chip = document.createElement("div");
-    chip.className = "chip";
-    const value = formatValue ? formatValue(e[valueKey]) : e[valueKey];
-    chip.innerHTML = `<span>${esc(e[labelKey])}</span><span class="chip-bar"><span class="chip-bar-fill" style="width:${Math.max(4, (e[valueKey] / max) * 100)}%"></span></span><span class="chip-count">${esc(value)}</span>`;
-    container.appendChild(chip);
+  const peak = entries.findIndex((e) => e[valueKey] === max);
+  const tip = chartTip();
+  entries.forEach((e, i) => {
+    const value = formatValue ? formatValue(e[valueKey]) : formatNum(e[valueKey]);
+    const cell = document.createElement("div");
+    cell.className = "col-cell";
+    const capLabel = i === peak ? `<span class="col-peak">${esc(value)}</span>` : "";
+    cell.innerHTML = `
+      <span class="col-slot">${capLabel}<span class="col-fill" style="height:${Math.max(1.5, (e[valueKey] / max) * 100)}%"></span></span>
+      <span class="col-tick">${i % labelEvery === 0 ? esc(tickFmt ? tickFmt(e[labelKey]) : e[labelKey]) : ""}</span>`;
+    cell.addEventListener("mousemove", (ev) => {
+      tip.textContent = `${e[labelKey]} — ${value}`;
+      tip.style.display = "block";
+      tip.style.left = `${ev.clientX + 12}px`;
+      tip.style.top = `${ev.clientY - 28}px`;
+    });
+    cell.addEventListener("mouseleave", () => { tip.style.display = "none"; });
+    container.appendChild(cell);
   });
 }
 
@@ -365,20 +419,21 @@ async function openStatsModal() {
 
   const tiles = $("#stats-tiles");
   tiles.innerHTML = `
-    <div class="stats-tile"><div class="stats-tile-value">${stats.total_tracks}</div><div class="stats-tile-label">Tracks</div></div>
-    <div class="stats-tile"><div class="stats-tile-value">${stats.total_releases}</div><div class="stats-tile-label">Releases</div></div>
-    <div class="stats-tile"><div class="stats-tile-value">${stats.total_labels}</div><div class="stats-tile-label">Labels</div></div>
-    <div class="stats-tile"><div class="stats-tile-value">${stats.total_artists}</div><div class="stats-tile-label">Artists</div></div>
+    <div class="stats-tile"><div class="stats-tile-value">${formatNum(stats.total_tracks)}</div><div class="stats-tile-label">Tracks</div></div>
+    <div class="stats-tile"><div class="stats-tile-value">${formatNum(stats.total_releases)}</div><div class="stats-tile-label">Releases</div></div>
+    <div class="stats-tile"><div class="stats-tile-value">${formatNum(stats.total_labels)}</div><div class="stats-tile-label">Labels</div></div>
+    <div class="stats-tile"><div class="stats-tile-value">${formatNum(stats.total_artists)}</div><div class="stats-tile-label">Artists</div></div>
     <div class="stats-tile"><div class="stats-tile-value">${formatBytes(stats.total_bytes)}</div><div class="stats-tile-label">Downloaded</div></div>
   `;
 
-  renderStatBars($("#stats-genres"), stats.genres, "name", "count");
-  renderStatBars($("#stats-artists"), stats.artists, "name", "count");
-  renderStatBars($("#stats-labels"), stats.labels, "name", "count");
-  renderStatBars($("#stats-bpm"), stats.bpm_buckets, "range", "count");
-  renderStatBars($("#stats-keys"), stats.keys, "name", "count");
-  renderStatBars($("#stats-activity"), stats.activity_by_month, "month", "count");
-  renderStatBars($("#stats-volume"), stats.bytes_by_month, "month", "bytes", formatBytes);
+  renderHBars($("#stats-genres"), stats.genres, "name", "count");
+  renderHBars($("#stats-artists"), stats.artists, "name", "count");
+  renderHBars($("#stats-labels"), stats.labels, "name", "count");
+  const shortMonth = (m) => `${m.slice(5)}/${m.slice(2, 4)}`; // 2026-07 -> 07/26
+  renderColumns($("#stats-bpm"), stats.bpm_buckets, "range", "count", null, 2, (r) => r.split("-")[0]);
+  renderColumns($("#stats-keys"), stats.keys, "name", "count");
+  renderColumns($("#stats-activity"), (stats.activity_by_month || []).slice(-24), "month", "count", null, 1, shortMonth);
+  renderColumns($("#stats-volume"), (stats.bytes_by_month || []).slice(-24), "month", "bytes", formatBytes, 1, shortMonth);
 }
 
 function renderWizardResults(payload) {
@@ -902,7 +957,6 @@ async function openSettingsModal() {
   const data = await api("GET", "/api/settings");
   fillForm($("#settings-form"), data);
   $("#settings-modal").classList.remove("hidden");
-  refreshWatchList();
 }
 
 async function refreshWatchList() {
@@ -913,8 +967,9 @@ async function refreshWatchList() {
 function renderWatchList(labels, artists) {
   const el = $("#watch-list");
   el.innerHTML = "";
+  $("#watch-count").textContent = labels.length + artists.length;
   if (!labels.length && !artists.length) {
-    el.innerHTML = '<p class="muted small">Not watching any labels or artists yet.</p>';
+    el.innerHTML = '<p class="muted small">Not watching any labels or artists yet — paste one above and every new release lands automatically.</p>';
     return;
   }
   renderWatchSection(el, "Labels", "label", labels);
@@ -1343,5 +1398,6 @@ async function addExploreSelected() {
   wireEvents();
   connectEvents();
   await refreshStatus();
+  refreshWatchList(); // watch list lives on the main page now
   setInterval(refreshStatus, 8000); // cheap safety net alongside SSE
 })();

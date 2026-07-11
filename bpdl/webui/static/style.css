@@ -32,19 +32,19 @@ body {
   overflow-x: hidden;
 }
 
-/* Awesome deep-dark background with a cold, glacial feel to match the icy logo:
-   a wide icy-blue aurora glow up top, a faint cyan counter-glow lower right, all
-   over a near-black gradient with a subtle vignette so the edges fall away. */
+/* Dark anime wallpaper: monochrome figure on the left, near-black everywhere
+   else — the app column sits over the black. Light vignette + bottom fade keep
+   text readable without burying the art; a faint red wash echoes her eyes. */
 body::before {
   content: "";
   position: fixed;
   inset: 0;
   z-index: -1;
   background:
-    radial-gradient(1100px 560px at 50% -10%, rgba(90, 160, 240, 0.20) 0%, transparent 62%),
-    radial-gradient(820px 620px at 88% 108%, rgba(60, 200, 220, 0.10) 0%, transparent 60%),
-    radial-gradient(120% 120% at 50% 40%, transparent 58%, rgba(0, 0, 0, 0.55) 100%),
-    linear-gradient(180deg, #0b1220 0%, #0a0f18 45%, #070a10 100%);
+    radial-gradient(900px 500px at 18% 20%, rgba(229, 72, 77, 0.06) 0%, transparent 65%),
+    radial-gradient(120% 120% at 50% 40%, transparent 55%, rgba(0, 0, 0, 0.6) 100%),
+    linear-gradient(180deg, rgba(6, 6, 7, 0.25) 0%, rgba(6, 6, 7, 0.45) 55%, rgba(4, 4, 5, 0.78) 100%),
+    url("/static/wallpaper-dark.webp") left center / cover no-repeat #060607;
   pointer-events: none;
 }
 
@@ -63,25 +63,25 @@ body::before {
 #hero-glow {
   position: absolute; top: -40%; left: 50%; transform: translateX(-50%);
   width: 900px; height: 480px;
-  background: radial-gradient(ellipse at center, rgba(120,190,255,0.16) 0%, rgba(80,140,210,0.07) 40%, transparent 70%);
+  background: radial-gradient(ellipse at center, rgba(229,72,77,0.13) 0%, rgba(150,40,45,0.06) 40%, transparent 70%);
   pointer-events: none;
 }
-/* Icy frosted wordmark: heavy clean type filled with a white-to-ice vertical
-   gradient, a fine frost highlight along the top edge, and a soft glacial glow.
-   Smart and cold — no stencil, no drips, no outline. */
+/* Monochrome wordmark to match the wallpaper's ink-and-shadow art: heavy clean
+   type filled white-to-smoke, lit from above, with a low red glow bleeding up
+   from below — the same red as her eyes and the remix tag. */
 #hero-logo {
   position: relative;
   margin: 0; text-align: center;
   font-family: "Segoe UI", "Helvetica Neue", "Arial", sans-serif;
   font-size: 78px; font-weight: 800; letter-spacing: 3px;
   text-transform: uppercase;
-  background: linear-gradient(180deg, #ffffff 0%, #dcefff 38%, #8fc6f2 70%, #5a9fe0 100%);
+  background: linear-gradient(180deg, #ffffff 0%, #e6e4e4 38%, #9a9698 70%, #6a6567 100%);
   -webkit-background-clip: text; background-clip: text;
   -webkit-text-fill-color: transparent; color: transparent;
   filter:
-    drop-shadow(0 1px 0 rgba(255,255,255,0.6))
-    drop-shadow(0 0 18px rgba(135,200,255,0.5))
-    drop-shadow(0 8px 26px rgba(30,80,140,0.4));
+    drop-shadow(0 1px 0 rgba(255,255,255,0.55))
+    drop-shadow(0 0 18px rgba(232,230,230,0.28))
+    drop-shadow(0 10px 28px rgba(229,72,77,0.32));
 }
 #hero-logo-wrap { position: relative; display: inline-block; margin-bottom: 16px; }
 #hero-remix {
@@ -93,7 +93,9 @@ body::before {
 @media (max-width: 700px) { #hero-remix { font-size: 11px; bottom: -12px; } }
 #hero-tagline {
   position: relative;
-  margin: 14px 0 0; color: var(--muted); font-size: 14px; letter-spacing: 0.5px;
+  margin: 18px 0 0; color: #cfcccd; font-size: 19px; font-weight: 600;
+  letter-spacing: 2.5px; text-transform: uppercase;
+  text-shadow: 0 2px 12px rgba(0, 0, 0, 0.6);
 }
 
 @keyframes hero-in {
@@ -115,10 +117,18 @@ body::before {
   backdrop-filter: blur(6px);
   z-index: 50;
 }
-#brand { font-size: 22px; font-weight: 700; letter-spacing: 0.5px; }
-#brand-mark { color: var(--accent); }
-#brand-rest { color: var(--text); opacity: 0.85; }
+#topbar { justify-content: flex-end; }
 #topbar-right { display: flex; align-items: center; gap: 14px; }
+
+.top-btn {
+  display: inline-flex; align-items: center; gap: 7px;
+  background: var(--surface); border: 1px solid var(--border-light);
+  color: var(--muted); border-radius: 8px; padding: 8px 14px;
+  font-size: 13px; font-weight: 600; font-family: var(--font);
+  cursor: pointer; transition: border-color .15s, color .15s;
+}
+.top-btn:hover { border-color: var(--accent); color: var(--text); }
+.top-btn svg { flex: none; }
 
 .pill {
   display: flex; align-items: center; gap: 8px;
@@ -140,9 +150,6 @@ body::before {
   font-size: 17px; cursor: pointer; transition: border-color .15s, color .15s;
 }
 .icon-btn:hover { border-color: var(--accent); color: var(--accent); }
-
-.anarchy-mark { width: 24px; height: 24px; opacity: 0.8; transition: opacity .15s, transform .15s; }
-.anarchy-mark:hover { opacity: 1; transform: rotate(-8deg); }
 
 /* ---- panels ---- */
 .panel {
@@ -206,13 +213,28 @@ input:focus, select:focus {
 @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
 
 /* ---- dashboard ---- */
+/* The paste box is the app's front door — keep it visibly hotter than
+   everything else on the page so nobody hunts for where links go. */
 #input-row { display: flex; gap: 10px; margin-bottom: 6px; }
 #url-input {
+  flex: 1; background: var(--surface); border: 1px solid rgba(88, 166, 255, 0.4);
+  color: var(--text); border-radius: 10px; padding: 16px 18px; font-size: 16px;
+  font-family: var(--font); outline: none;
+  box-shadow: 0 0 0 1px rgba(88, 166, 255, 0.12), 0 6px 26px rgba(0, 0, 0, 0.35);
+  transition: border-color .15s, box-shadow .15s;
+}
+#url-input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-dim), 0 6px 26px rgba(0, 0, 0, 0.35); }
+#input-row .btn { padding-left: 22px; padding-right: 22px; font-size: 15px; }
+
+/* ---- release watch (main page) ---- */
+.watch-blurb { margin: -6px 0 12px; }
+.watch-add-row { display: flex; gap: 10px; margin-bottom: 12px; }
+.watch-add-row input {
   flex: 1; background: var(--surface); border: 1px solid var(--border-light);
-  color: var(--text); border-radius: 8px; padding: 13px 16px; font-size: 15px;
+  color: var(--text); border-radius: 8px; padding: 10px 14px; font-size: 14px;
   font-family: var(--font); outline: none;
 }
-#url-input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-dim); }
+.watch-add-row input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-dim); }
 #input-status { min-height: 18px; margin: 0 0 26px; }
 #input-status.err { color: var(--error); }
 
@@ -357,7 +379,7 @@ input:focus, select:focus {
   background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px;
   padding: 14px 16px; text-align: center;
 }
-.stats-tile .stats-tile-value { font-size: 24px; font-weight: 700; color: var(--accent); font-variant-numeric: tabular-nums; }
+.stats-tile .stats-tile-value { font-size: 26px; font-weight: 700; color: var(--accent); }
 .stats-tile .stats-tile-label { font-size: 11.5px; color: var(--muted); margin-top: 4px; text-transform: uppercase; letter-spacing: 0.4px; }
 
 .stats-columns { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin: 20px 0; }
@@ -365,12 +387,57 @@ input:focus, select:focus {
 
 #stats-modal h3 { font-size: 12.5px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--muted); margin: 20px 0 10px; }
 
-.stats-timeline { display: flex; flex-direction: column; gap: 6px; }
-.stats-timeline .chip { cursor: default; }
-.stats-timeline .chip:hover { border-color: var(--border); }
+.stats-columns.two { grid-template-columns: 1fr 1fr; }
+
+/* Charts: one hue (#2f81f7 — validated ≥3:1 on this surface, in the dark-mode
+   lightness band), thin marks with a rounded data-end and a square baseline,
+   labels/values in text tokens — never in the mark color. */
+:root { --chart-mark: #2f81f7; }
+
+.hbar-chart { display: flex; flex-direction: column; gap: 7px; }
+.hbar-row { display: grid; grid-template-columns: 96px 1fr 44px; align-items: center; gap: 8px; }
+.hbar-name {
+  font-size: 12px; color: var(--muted);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.hbar-track { height: 13px; background: var(--surface-2); border-radius: 0 4px 4px 0; }
+.hbar-fill {
+  display: block; height: 100%; background: var(--chart-mark);
+  border-radius: 0 4px 4px 0; min-width: 2px;
+}
+.hbar-val { font-size: 12px; color: var(--text); font-variant-numeric: tabular-nums; text-align: right; }
+
+.col-chart {
+  display: flex; align-items: stretch; gap: 2px;
+  height: 150px; padding-top: 18px; /* headroom for the peak label */
+  border-bottom: 1px solid var(--border); margin-bottom: 26px;
+}
+.col-cell { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; position: relative; }
+.col-slot { flex: 1; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; position: relative; }
+.col-fill {
+  display: block; width: 100%; max-width: 24px;
+  background: var(--chart-mark); border-radius: 4px 4px 0 0;
+}
+.col-cell:hover .col-fill { filter: brightness(1.25); }
+.col-peak {
+  position: absolute; top: -17px; left: 50%; transform: translateX(-50%);
+  font-size: 11px; color: var(--text); font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+.col-tick {
+  position: absolute; top: 100%; left: 0; right: 0; padding-top: 4px;
+  font-size: 10.5px; color: var(--muted); text-align: center;
+  white-space: nowrap; overflow: hidden;
+}
+
+#chart-tip {
+  display: none; position: fixed; z-index: 300; pointer-events: none;
+  background: var(--surface); border: 1px solid var(--border-light); border-radius: 6px;
+  padding: 5px 9px; font-size: 12px; color: var(--text);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+}
 
 @media (max-width: 640px) {
-  .stats-columns { grid-template-columns: 1fr; }
+  .stats-columns, .stats-columns.two { grid-template-columns: 1fr; }
 }
 
 .toast {
