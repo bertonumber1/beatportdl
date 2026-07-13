@@ -12,13 +12,17 @@ Runs on Linux (amd64/arm64), Windows, and macOS. Docker images are multi-arch
 
 ## Screenshots
 
-| Queue | Filter wizard |
-|---|---|
-| ![Queue](screenshots/queue.png) | ![Filter wizard](screenshots/filter-wizard.png) |
+**Home — paste a label / artist / track / release URL, and watch labels or artists for new releases**
 
-| Scanning a label | Live downloads |
-|---|---|
-| ![Scanning](screenshots/scanning.png) | ![Now downloading](screenshots/now-downloading.png) |
+![Home — queue and release watch](screenshots/bpdl1.png)
+
+**Library stats — tracks, releases, success rate and downloads per day**
+
+![Library stats](screenshots/bpdl2.png)
+
+**Explore — browse the Beatport Top 100, new tracks, new releases and DJ charts, and queue straight from the charts**
+
+![Explore — Beatport Top 100 and charts](screenshots/bpdl3.png)
 
 ## Quick start — Docker (recommended)
 
