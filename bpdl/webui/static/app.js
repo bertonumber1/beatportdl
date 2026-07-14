@@ -158,11 +158,11 @@ function renderQueue() {
     card.innerHTML = `
       <div class="card-art" style="${artStyle(item.name, item.cover)}">${item.cover ? "" : initials(item.name)}</div>
       <div class="card-body">
-        <div class="card-badge">${item.type.replace(/s$/, "")}${item.filters === undefined ? "" : item.filters ? " · filtered" : item.needs_wizard ? "" : " · unfiltered"}</div>
+        <div class="card-badge">${item.type.replace(/s$/, "")}${item.filters === undefined ? "" : item.filters ? " · filtered" : item.needs_wizard ? " · needs filters" : " · unfiltered"}</div>
         <div class="card-name" title="${esc(item.name)}">${esc(item.name)}</div>
         <div class="card-subtitle" title="${esc(item.subtitle)}">${esc(item.subtitle)}</div>
       </div>
-      ${item.needs_wizard === false && (item.type === "labels" || item.type === "artists") ? '<button class="card-edit" title="Edit filters">&#9998;</button>' : ""}
+      ${(item.type === "labels" || item.type === "artists") ? `<button class="card-edit" title="${item.needs_wizard ? "Choose filters" : "Edit filters"}">&#9998;</button>` : ""}
       <button class="card-remove" title="Remove">&times;</button>
     `;
     card.querySelector(".card-remove").addEventListener("click", (e) => { e.stopPropagation(); removeQueueItem(idx); });
@@ -273,11 +273,13 @@ function openSearchModal() {
 
 async function addSelectedSearchResults() {
   const selected = $$("#search-results-grid .card.selected").map((c) => state.searchResults[Number(c.dataset.idx)]);
+  let firstWizard = null; // first added label/artist still needing the filter wizard
   for (const r of selected) {
     try {
       const data = await api("POST", "/api/queue", { input: r.url });
       const item = data.added;
       state.queue.push(item);
+      if (item.needs_wizard && firstWizard === null) firstWizard = { idx: state.queue.length - 1, url: item.url };
     } catch (e) {
       showToast(`Failed to add "${r.name}": ${e.message}`, "error");
     }
@@ -285,6 +287,7 @@ async function addSelectedSearchResults() {
   renderQueue();
   $("#search-modal").classList.add("hidden");
   if (selected.length) showToast(`Added ${selected.length} item(s) to queue.`, "success");
+  if (firstWizard) openWizard(firstWizard.idx, firstWizard.url);
 }
 
 // ---- wizard ----

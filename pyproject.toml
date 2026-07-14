@@ -1,6 +1,6 @@
 [project]
 name = "beatportdl-webui"
-version = "2.4.2"
+version = "2.4.3"
 description = "beatportdl-webui — Beatport/Beatsource downloader web UI, Python rewrite dropping Go"
 requires-python = ">=3.10"
 dependencies = [
