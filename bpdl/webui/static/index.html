@@ -344,6 +344,8 @@
           <div class="field"><label>Cover size</label><input name="cover_size" type="text"></div>
           <div class="field"><label>Proxy (optional)</label><input name="proxy" type="text"></div>
           <div class="field"><label>Watch check interval (hours)</label><input name="watch_interval_hours" type="number" min="1" max="168"></div>
+          <div class="field"><label>Watch staging folder (optional)</label><input name="watch_downloads_directory" type="text" placeholder="blank = normal downloads folder"><small>Where watch-list auto-downloads land, one subfolder per label, so unattended grabs stay out of the library until you file them.</small></div>
+          <div class="field"><label>Watch lookback (days)</label><input name="watch_lookback_days" type="number" min="0" max="365"><small>How far back before each label's watermark to re-check, in case Beatport lists something late.</small></div>
           <div class="field"><label>Notification webhook URL (optional)</label><input name="notify_webhook_url" type="text" placeholder="https://discord.com/api/webhooks/..."></div>
         </form>
         <p id="settings-error" class="error-text hidden"></p>

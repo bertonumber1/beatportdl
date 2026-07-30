@@ -6,6 +6,7 @@ import queue
 import threading
 import time
 from contextlib import asynccontextmanager
+from dataclasses import replace
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
@@ -37,7 +38,7 @@ from bpdl.scanner import for_paginated, rank_map, sanitize_params, scan_artist, 
 from bpdl.search import extract_store_tag
 
 STATIC_DIR = Path(__file__).parent / "static"
-VERSION = "2.4.3"
+VERSION = "2.5.0"
 
 bus = EventBus()
 
@@ -237,6 +238,8 @@ def _cfg_dict(cfg: config_module.AppConfig) -> dict:
         "watched_labels": cfg.watched_labels,
         "watched_artists": cfg.watched_artists,
         "watch_interval_hours": cfg.watch_interval_hours,
+        "watch_downloads_directory": cfg.watch_downloads_directory,
+        "watch_lookback_days": cfg.watch_lookback_days,
         "notify_webhook_url": cfg.notify_webhook_url,
     }
 
@@ -269,6 +272,8 @@ class SettingsPayload(BaseModel):
     proxy: str | None = None
     skip_previously_downloaded: bool | None = None
     watch_interval_hours: int | None = None
+    watch_downloads_directory: str | None = None
+    watch_lookback_days: int | None = None
     notify_webhook_url: str | None = None
 
 
@@ -853,6 +858,8 @@ def _run_download() -> None:
             total_downloaded += run.stats.downloaded
             total_skipped += sum(run.stats.skipped.values())
             total_failed += run.stats.failed
+            if not state.stop_requested:
+                _record_full_label_download(item, run)
             bus.publish({"type": "item_done", "url": item["url"]})
             processed_ids.add(id(item))
     finally:
@@ -905,8 +912,19 @@ class WatchAddPayload(BaseModel):
     url: str
 
 
+def _sync_for_url(url: str) -> dict | None:
+    try:
+        return history.get_label_sync(parse_url(url).id)
+    except Exception:
+        return None
+
+
 def _watch_response() -> dict:
-    labels = [{**e, "pending_releases": history.get_all_pending(e["url"])} for e in state.cfg.watched_labels]
+    labels = [{**e,
+               "pending_releases": history.get_all_pending(e["url"]),
+               # what the card shows as 'full catalogue held up to <date>'
+               "sync": _sync_for_url(e["url"])}
+              for e in state.cfg.watched_labels]
     artists = [{**e, "pending_releases": history.get_all_pending(e["url"])} for e in state.cfg.watched_artists]
     return {
         "watched_labels": labels,
@@ -967,11 +985,160 @@ def watch_check_now() -> dict:
     return {"started": True}
 
 
+# ---- fully-downloaded labels ----------------------------------------------------
+
+class LabelUrlPayload(BaseModel):
+    url: str
+
+
+@app.get("/api/label-syncs")
+def list_label_syncs() -> dict:
+    """Labels whose catalogue has been downloaded in full, and the publish_date each
+    is held up to — the mark 'update to latest' starts from."""
+    return {"labels": history.get_label_syncs()}
+
+
+@app.delete("/api/label-syncs/{label_id}")
+def delete_label_sync(label_id: int) -> dict:
+    _require_login()
+    history.forget_label_sync(label_id)
+    return {"labels": history.get_label_syncs()}
+
+
+@app.post("/api/label/update-latest")
+def label_update_latest(payload: LabelUrlPayload) -> dict:
+    """Top a fully-downloaded label up to today: fetch only what Beatport has
+    published since the recorded mark, grab it, and advance the mark.
+
+    Requires the full download to have happened first — without a mark there is no
+    honest 'since when', and defaulting to the whole catalogue is exactly the
+    thousands-of-releases walk this is meant to replace.
+    """
+    _require_login()
+    if state.watch_checking:
+        raise HTTPException(400, "a watch check is already running")
+    try:
+        link = parse_url(payload.url)
+    except Exception as e:
+        raise HTTPException(400, f"Invalid URL: {e}") from e
+    if link.type != LABEL_LINK:
+        raise HTTPException(400, "update-latest only supports label URLs")
+    sync = history.get_label_sync(link.id)
+    if not sync:
+        raise HTTPException(
+            400, "this label has not been downloaded in full yet — queue it unfiltered "
+                 "('queue everything') once, and it will be tracked from then on")
+
+    def run() -> None:
+        state.watch_checking = True
+        try:
+            # A transient entry: the mark in label_syncs is the real state, so this
+            # works whether or not the label is also on the watch list.
+            entry = next((e for e in state.cfg.watched_labels if e["url"] == payload.url),
+                         None) or {"url": payload.url, "name": sync.get("label_name", "")}
+            result = _check_watched_label(entry)
+            bus.publish({"type": "label_updated", "url": payload.url,
+                         "name": sync.get("label_name", ""), **result})
+        finally:
+            state.watch_checking = False
+
+    threading.Thread(target=run, daemon=True).start()
+    return {"started": True, "since": sync.get("synced_through", "")}
+
+
 def _parse_release_date(raw: str) -> date | None:
     try:
         return date.fromisoformat(raw[:10])
     except (ValueError, TypeError):
         return None
+
+
+def _newest_publish_date(client, label_id: int) -> str:
+    """The newest publish_date in a label's catalogue, per Beatport's own ordering.
+    One page of one result — cheap, and exact, which matters because this becomes
+    the mark every later incremental update starts from."""
+    try:
+        page = client.get_label_releases(label_id, 1, "order_by=-publish_date&per_page=1")
+        for release in page.results:
+            got = _parse_release_date(release.publish_date)
+            if got:
+                return got.isoformat()
+    except Exception:
+        pass
+    return ""
+
+
+def _record_full_label_download(item: dict, run) -> None:
+    """Note that a label's WHOLE catalogue is now held, so later runs can top it up.
+
+    Deliberately narrow: only an unfiltered label item (the 'queue everything'
+    path) that finished with no failures counts. A filtered download covers some
+    slice of the catalogue, so treating it as complete would make every future
+    update start after releases that were never actually fetched.
+    """
+    if item.get("type") != LABEL_LINK or item.get("filters") is not None:
+        return
+    if run.stats.failed or not item.get("id"):
+        return
+    client = _client_for(item.get("store") or "beatport")
+    synced_through = _newest_publish_date(client, int(item["id"]))
+    if not synced_through:
+        return
+    history.record_label_sync(
+        label_id=int(item["id"]),
+        store=item.get("store") or "beatport",
+        label_url=item["url"],
+        label_name=item.get("name", ""),
+        synced_through=synced_through,
+        releases=0,          # 'releases' counts what LATER top-ups add, so start at 0
+        tracks=run.stats.downloaded,
+    )
+    bus.publish({"type": "label_synced", "url": item["url"], "name": item.get("name", ""),
+                 "synced_through": synced_through})
+
+
+# Per-label high-water mark: the newest Beatport publish_date this label has been
+# checked up to. Its absence means the label has never been checked, which is the
+# signal to do the one-off full-catalogue baseline walk.
+_WATERMARK_KEY = "last_publish_date"
+
+
+def _watch_cfg() -> config_module.AppConfig:
+    """Config for unattended watch-list downloads. With watch_downloads_directory
+    set they land in a staging folder instead of the library, one subfolder per
+    label — a label's releases have no single home in the library, so staging and
+    filing by hand beats guessing (see the field comment in config.py)."""
+    staging = (state.cfg.watch_downloads_directory or "").strip()
+    if not staging:
+        return state.cfg
+    cfg = replace(state.cfg)
+    cfg.downloads_directory = staging
+    cfg.sort_by_label = True
+    Path(staging).mkdir(parents=True, exist_ok=True)
+    return cfg
+
+
+def _watch_window_start(entry: dict, sync: dict | None = None) -> date | None:
+    """Start of this label's incremental fetch window: the newest publish_date we
+    already hold, less a lookback. None = nothing to start from, so walk the whole
+    catalogue and baseline it.
+
+    A recorded full download wins over the watch watermark. It is the stronger
+    statement — 'the catalogue is on disk up to here', rather than 'we looked as
+    far as here' — and it is what makes the label pick up from the last date it
+    was actually downloaded from, however long after the fact the watch entry was
+    added.
+
+    The lookback exists because the fetch filter is server-side: Beatport can
+    ingest a release carrying a publish_date earlier than one we have already
+    passed, and a bare publish_date=<mark>: would never show it to us again.
+    """
+    mark = _parse_release_date((sync or {}).get("synced_through") or "")
+    if mark is None:
+        mark = _parse_release_date(entry.get(_WATERMARK_KEY) or "")
+    if mark is None:
+        return None
+    return mark - timedelta(days=max(0, state.cfg.watch_lookback_days))
 
 
 def _check_watched_label(entry: dict) -> dict:
@@ -981,30 +1148,52 @@ def _check_watched_label(entry: dict) -> dict:
         return {"new_releases": 0, "new_tracks": 0, "error": str(e)}
     client = _client_for(link.store)
     label_url = entry["url"]
-    watched_since = _parse_release_date(entry.get("watched_since", "")) or date.min
     today = datetime.now(timezone.utc).date()
+
+    # A label whose catalogue was fully downloaded is measured from THAT date, not
+    # from when it happened to be added to the watch list. Without this, a label
+    # grabbed in full in March and watched from July would treat everything
+    # published in between as pre-existing catalogue and baseline it away.
+    sync = history.get_label_sync(link.id)
+    synced_through = _parse_release_date((sync or {}).get("synced_through") or "")
+    watched_since = synced_through or _parse_release_date(entry.get("watched_since", "")) or date.min
+
+    # First check walks everything so the back catalogue gets baselined; every
+    # check after that fetches only what Beatport published since the mark.
+    window_start = _watch_window_start(entry, sync)
+    params = f"publish_date={window_start.isoformat()}:" if window_start else ""
 
     new_releases = []
     newly_pending = []
+    high_water = _parse_release_date(entry.get(_WATERMARK_KEY) or "")
     try:
         def on_release(release, _i):
+            nonlocal high_water
+            # publish_date = when Beatport listed it; release.date = the original
+            # street date. Newness is a publish_date question — judging it by
+            # street date makes every arrival from a label that uploads its back
+            # catalogue (dated decades ago) look old and get silently baselined.
+            published = _parse_release_date(release.publish_date)
+            if published is not None and published <= today and (high_water is None or published > high_water):
+                high_water = published
+
             if history.is_release_seen(release.id):
                 return
-            release_date = _parse_release_date(release.date)
-            if release_date is None:
-                # Can't tell how old it is — baseline it rather than guess-download.
-                history.mark_release_baseline(release.id, release.name, release.label.name)
-            elif release_date > today:
-                # Pre-release: not downloadable yet, track it and recheck each cycle.
-                history.add_pending_release(release.id, label_url, release.name, release_date.isoformat())
+            street_date = _parse_release_date(release.date)
+            if street_date is not None and street_date > today:
+                # Not out yet: track it and grab it on the cycle after it lands.
+                history.add_pending_release(release.id, label_url, release.name, street_date.isoformat())
                 newly_pending.append(release)
-            elif release_date >= watched_since:
+            elif published is None:
+                # No ingest date to judge by — baseline rather than guess-download.
+                history.mark_release_baseline(release.id, release.name, release.label.name)
+            elif published >= watched_since:
                 new_releases.append(release)
             else:
-                # Existing catalogue that predates when we started watching this label.
+                # Catalogue Beatport listed before we started watching this label.
                 history.mark_release_baseline(release.id, release.name, release.label.name)
 
-        for_paginated(link.id, "", client.get_label_releases, on_release)
+        for_paginated(link.id, params, client.get_label_releases, on_release)
     except Exception as e:
         return {"new_releases": 0, "new_tracks": 0, "error": str(e)}
 
@@ -1019,21 +1208,44 @@ def _check_watched_label(entry: dict) -> dict:
         history.remove_pending(row["release_id"], label_url)
 
     total_tracks = 0
+    download_failed = False
     if new_releases:
-        run = App(state.cfg, state.bp, state.bs, on_event=bus.publish)
+        run = App(_watch_cfg(), state.bp, state.bs, on_event=bus.publish)
         for release in new_releases:
             try:
                 run.handle_url(release.store_url())
             except Exception:
-                pass
+                download_failed = True
         run.shutdown()
         total_tracks = run.stats.downloaded
+
+    # Only advance once the batch is actually down. Moving the watermark past a
+    # release we failed to fetch would put it outside every future fetch window.
+    if high_water and not download_failed and high_water.isoformat() != entry.get(_WATERMARK_KEY):
+        entry[_WATERMARK_KEY] = high_water.isoformat()
+        if state.config_path:
+            config_module.save(state.cfg, state.config_path)
+
+    # Keep the full-download mark in step, so 'synced to' reflects what is held
+    # rather than only what the original full grab covered.
+    if sync and high_water and not download_failed:
+        history.record_label_sync(
+            label_id=link.id,
+            store=link.store,
+            label_url=label_url,
+            label_name=(sync.get("label_name") or entry.get("name", "")),
+            synced_through=high_water.isoformat(),
+            releases=len(new_releases),
+            tracks=total_tracks,
+        )
 
     return {
         "new_releases": len(new_releases),
         "new_tracks": total_tracks,
         "newly_pending": len(newly_pending),
         "names": [r.name for r in new_releases],
+        "watermark": entry.get(_WATERMARK_KEY, ""),
+        "synced_through": (history.get_label_sync(link.id) or {}).get("synced_through", ""),
     }
 
 
@@ -1083,7 +1295,7 @@ def _check_watched_artist(entry: dict) -> dict:
 
     total_tracks = 0
     if new_tracks:
-        run = App(state.cfg, state.bp, state.bs, on_event=bus.publish)
+        run = App(_watch_cfg(), state.bp, state.bs, on_event=bus.publish)
         for track in new_tracks:
             try:
                 run.handle_url(track.store_url())

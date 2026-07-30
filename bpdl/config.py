@@ -87,6 +87,8 @@ _DEFAULTS = dict(
     proxy="",
     skip_previously_downloaded=True,
     watch_interval_hours=6,
+    watch_downloads_directory="",
+    watch_lookback_days=14,
     notify_webhook_url="",
 )
 
@@ -143,6 +145,17 @@ class AppConfig:
     watched_labels: list[dict] = field(default_factory=list)
     watched_artists: list[dict] = field(default_factory=list)
     watch_interval_hours: int = 6
+
+    # Where watch-list auto-downloads land. Empty = downloads_directory (the old
+    # behaviour). Pointing this at a staging folder keeps unattended grabs out of
+    # the library until they've been filed by hand — a label's releases live in
+    # no single place (per-genre LABELS/ dirs, artist folders, compilations), so
+    # there is no reliable automatic home to route them to.
+    watch_downloads_directory: str = ""
+    # How far back before a label's watermark to re-query. Beatport can ingest a
+    # release with a publish_date earlier than one we've already passed, and a
+    # server-side publish_date=X: filter would never show it to us again.
+    watch_lookback_days: int = 14
 
     # Generic outbound notification hook — a plain HTTP POST, so it works with
     # Discord/Slack incoming webhooks, ntfy.sh, Gotify (URL includes its own
@@ -203,6 +216,8 @@ def parse(file_path: str | Path) -> AppConfig:
         watched_labels=raw.get("watched_labels") or [],
         watched_artists=raw.get("watched_artists") or [],
         watch_interval_hours=merged["watch_interval_hours"],
+        watch_downloads_directory=merged["watch_downloads_directory"],
+        watch_lookback_days=merged["watch_lookback_days"],
         notify_webhook_url=merged["notify_webhook_url"],
     )
 
@@ -266,6 +281,8 @@ def save(cfg: AppConfig, file_path: str | Path) -> None:
         "watched_labels": cfg.watched_labels,
         "watched_artists": cfg.watched_artists,
         "watch_interval_hours": cfg.watch_interval_hours,
+        "watch_downloads_directory": cfg.watch_downloads_directory,
+        "watch_lookback_days": cfg.watch_lookback_days,
         "notify_webhook_url": cfg.notify_webhook_url,
     }
     with open(path, "w") as f:

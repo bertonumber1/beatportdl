@@ -85,6 +85,26 @@ def init_db() -> None:
         if "file_size_bytes" not in existing_cols:
             conn.execute("ALTER TABLE downloads ADD COLUMN file_size_bytes INTEGER DEFAULT 0")
 
+        # A label downloaded in FULL and unfiltered is a different thing from one
+        # that has merely been seen: it is a complete catalogue, so from then on it
+        # only ever needs topping up. Recording when that happened — and the newest
+        # Beatport publish_date it covered — is what lets 'update to latest' fetch
+        # just what has appeared since, instead of re-walking thousands of releases
+        # and leaning on per-release dedup to throw nearly all of them away.
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS label_syncs (
+                label_id INTEGER PRIMARY KEY,
+                store TEXT,
+                label_url TEXT,
+                label_name TEXT,
+                synced_through TEXT,
+                completed_at TEXT NOT NULL,
+                updated_at TEXT,
+                releases INTEGER DEFAULT 0,   -- releases added by later top-ups
+                tracks INTEGER DEFAULT 0      -- tracks downloaded, full grab + top-ups
+            )
+        """)
+
         conn.execute("""
             CREATE TABLE IF NOT EXISTS pending_releases (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -188,6 +208,66 @@ def mark_track_baseline(track_id: int, release_id: int, track_name: str, artists
         release_name=release_name, label=label, genre="", subgenre="", bpm=0, key="",
         quality="", file_path="", status=STATUS_SKIPPED, reason=reason,
     )
+
+
+def record_label_sync(label_id: int, store: str, label_url: str, label_name: str,
+                      synced_through: str, releases: int = 0, tracks: int = 0) -> None:
+    """Mark a label's catalogue as fully held up to `synced_through` (a Beatport
+    publish_date). Called when an unfiltered whole-label download finishes, and
+    again each time an incremental update succeeds.
+
+    synced_through only ever moves forward: an update that happens to cover an
+    older window must not rewind the mark and put already-held releases back
+    inside every future fetch window.
+    """
+    now = datetime.now(timezone.utc).isoformat()
+    with _db() as conn:
+        conn.row_factory = sqlite3.Row
+        row = conn.execute(
+            "SELECT synced_through, completed_at, releases, tracks FROM label_syncs WHERE label_id = ?",
+            (label_id,),
+        ).fetchone()
+        if row is None:
+            conn.execute(
+                """INSERT INTO label_syncs
+                   (label_id, store, label_url, label_name, synced_through,
+                    completed_at, updated_at, releases, tracks)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (label_id, store, label_url, label_name, synced_through, now, now,
+                 releases, tracks),
+            )
+            return
+        best = max(x for x in (synced_through, row["synced_through"] or "") if x) or ""
+        conn.execute(
+            """UPDATE label_syncs
+               SET store = ?, label_url = ?, label_name = ?, synced_through = ?,
+                   updated_at = ?, releases = releases + ?, tracks = tracks + ?
+               WHERE label_id = ?""",
+            (store, label_url, label_name, best, now, releases, tracks, label_id),
+        )
+
+
+def get_label_sync(label_id: int) -> dict | None:
+    if not label_id:
+        return None
+    with _db() as conn:
+        conn.row_factory = sqlite3.Row
+        row = conn.execute("SELECT * FROM label_syncs WHERE label_id = ?", (label_id,)).fetchone()
+        return dict(row) if row else None
+
+
+def get_label_syncs() -> list[dict]:
+    with _db() as conn:
+        conn.row_factory = sqlite3.Row
+        return [dict(r) for r in conn.execute(
+            "SELECT * FROM label_syncs ORDER BY label_name COLLATE NOCASE")]
+
+
+def forget_label_sync(label_id: int) -> None:
+    """Drop the full-download mark, so the label goes back to being treated as
+    never fully held (next watch check baselines it again)."""
+    with _db() as conn:
+        conn.execute("DELETE FROM label_syncs WHERE label_id = ?", (label_id,))
 
 
 def add_pending_release(release_id: int, label_url: str, release_name: str, expected_date: str) -> None:

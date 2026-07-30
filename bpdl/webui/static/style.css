@@ -167,6 +167,7 @@ body::before {
 .settings-form.grid .field.checkbox { grid-column: span 2; }
 .field { display: flex; flex-direction: column; gap: 6px; }
 .field label { font-size: 12.5px; color: var(--muted); }
+.field small { font-size: 11.5px; color: var(--muted); opacity: .8; line-height: 1.45; margin-top: -2px; }
 .field.checkbox label { flex-direction: row; align-items: center; gap: 8px; color: var(--text); font-size: 14px; }
 .field.checkbox input { width: 16px; height: 16px; }
 

@@ -329,3 +329,325 @@ def test_label_queued_during_download_is_not_dropped():
         assert server.state.downloading is False
     finally:
         server.state.queue = []
+
+
+# ---- watch-list: publish_date vs release date, and the per-label watermark ----
+
+
+def _release(rid, name, street_date, publish_date):
+    """Minimal Release built the way the API layer builds it, so the tests cover
+    the real new_release_date/publish_date mapping rather than a hand-made object."""
+    from bpdl.models import Release
+    return Release.from_json(
+        {"id": rid, "name": name, "new_release_date": street_date,
+         "publish_date": publish_date, "label": {"id": 1, "name": "Test Label"}},
+        "beatport",
+    )
+
+
+def test_release_parses_publish_date_separately_from_street_date():
+    r = _release(1, "Reissue", "2001-05-12", "2025-09-02T00:00:00-06:00")
+    assert r.date == "2001-05-12"       # original street date
+    assert r.publish_date == "2025-09-02"  # when Beatport listed it
+
+
+class _WatchHarness:
+    """Drives server._check_watched_label against a fixed set of releases,
+    capturing the params it fetches with and the URLs it tries to download."""
+
+    def __init__(self, releases, sync=None):
+        self.releases = releases
+        self.params_used = []
+        self.downloaded = []
+        self.download_raises = False
+        self.cfg_seen = None
+        self.sync = sync            # a recorded full-label download, or None
+        self.sync_writes = []
+
+    def install(self, monkeypatch, entry, *, lookback=14, staging=""):
+        from bpdl.webui import server
+
+        harness = self
+
+        class FakeClient:
+            store = "beatport"
+
+            def get_label_releases(self, label_id, page, params=""):
+                raise AssertionError("paging is driven by the patched for_paginated")
+
+            def get_release(self, release_id):
+                raise AssertionError("no pending releases in these tests")
+
+        def fake_for_paginated(entity_id, params, fetch_page, process_item, should_stop=None):
+            harness.params_used.append(params)
+            for i, rel in enumerate(harness.releases):
+                process_item(rel, i)
+
+        class FakeApp:
+            def __init__(self, cfg, bp, bs, on_event=None):
+                harness.cfg_seen = cfg
+                self.stats = mock.Mock(downloaded=len(harness.releases))
+
+            def handle_url(self, url):
+                if harness.download_raises:
+                    raise RuntimeError("boom")
+                harness.downloaded.append(url)
+
+            def shutdown(self, cancel_pending=False):
+                pass
+
+        cfg = AppConfig(username="u", password="p", watch_lookback_days=lookback,
+                        watch_downloads_directory=staging, watched_labels=[entry])
+        monkeypatch.setattr(server.state, "cfg", cfg)
+        monkeypatch.setattr(server.state, "config_path", "")   # no config writes in tests
+        monkeypatch.setattr(server, "_client_for", lambda store: FakeClient())
+        monkeypatch.setattr(server, "for_paginated", fake_for_paginated)
+        monkeypatch.setattr(server, "App", FakeApp)
+        monkeypatch.setattr(server.bus, "publish", lambda ev: None)
+        monkeypatch.setattr(server.history, "is_release_seen", lambda rid: False)
+        monkeypatch.setattr(server.history, "mark_release_baseline",
+                            lambda *a, **k: harness.__dict__.setdefault("baselined", []).append(a[0]))
+        monkeypatch.setattr(server.history, "add_pending_release", lambda *a, **k: None)
+        monkeypatch.setattr(server.history, "get_due_pending", lambda url: [])
+        monkeypatch.setattr(server.history, "remove_pending", lambda *a: None)
+        # Stub the full-download mark too, or these tests open the real history DB
+        # (and create one on disk) just to read a table they never populate.
+        monkeypatch.setattr(server.history, "get_label_sync", lambda lid: harness.sync)
+        monkeypatch.setattr(server.history, "record_label_sync",
+                            lambda **kw: harness.sync_writes.append(kw))
+        return server
+
+
+def test_watch_grabs_back_catalogue_upload_dated_decades_ago(monkeypatch):
+    """The bug this replaces: a label uploading its back catalogue produces
+    releases with a decades-old street date but a fresh publish_date. Judging
+    newness by street date baselined every one of them and downloaded nothing."""
+    rel = _release(10, "Nightmare Ravers", "2001-05-12", "2026-07-28")
+    entry = {"url": "https://www.beatport.com/label/x/1", "name": "X",
+             "watched_since": "2026-07-01", "last_publish_date": "2026-07-20"}
+    h = _WatchHarness([rel])
+    server = h.install(monkeypatch, entry)
+
+    result = server._check_watched_label(entry)
+
+    assert result["new_releases"] == 1
+    assert h.downloaded == [rel.store_url()]
+
+
+def test_watch_baselines_release_beatport_listed_before_we_started_watching(monkeypatch):
+    rel = _release(11, "Old Upload", "2001-05-12", "2026-06-01")
+    entry = {"url": "https://www.beatport.com/label/x/1", "name": "X",
+             "watched_since": "2026-07-01", "last_publish_date": "2026-07-20"}
+    h = _WatchHarness([rel])
+    server = h.install(monkeypatch, entry)
+
+    result = server._check_watched_label(entry)
+
+    assert result["new_releases"] == 0
+    assert h.downloaded == []
+    assert h.baselined == [11]
+
+
+def test_watch_first_check_walks_whole_catalogue_then_sets_watermark(monkeypatch):
+    """No watermark = never checked, so fetch unfiltered (the back catalogue has
+    to be walked once to be baselined). The watermark is set from that walk."""
+    rels = [_release(1, "A", "2020-01-01", "2026-06-10"),
+            _release(2, "B", "2020-01-01", "2026-06-25")]
+    entry = {"url": "https://www.beatport.com/label/x/1", "name": "X",
+             "watched_since": "2026-07-01"}
+    h = _WatchHarness(rels)
+    server = h.install(monkeypatch, entry)
+
+    server._check_watched_label(entry)
+
+    assert h.params_used == [""]                      # unfiltered full walk
+    assert entry["last_publish_date"] == "2026-06-25"  # newest publish_date seen
+
+
+def test_watch_second_check_fetches_only_since_watermark_less_lookback(monkeypatch):
+    entry = {"url": "https://www.beatport.com/label/x/1", "name": "X",
+             "watched_since": "2026-01-01", "last_publish_date": "2026-07-20"}
+    h = _WatchHarness([])
+    server = h.install(monkeypatch, entry, lookback=14)
+
+    server._check_watched_label(entry)
+
+    assert h.params_used == ["publish_date=2026-07-06:"]  # 2026-07-20 minus 14d
+
+
+def test_watch_watermark_never_advances_past_a_failed_download(monkeypatch):
+    """Advancing past a release we failed to fetch would put it outside every
+    future fetch window — it would never be offered again."""
+    rel = _release(12, "New", "2026-07-25", "2026-07-28")
+    entry = {"url": "https://www.beatport.com/label/x/1", "name": "X",
+             "watched_since": "2026-07-01", "last_publish_date": "2026-07-20"}
+    h = _WatchHarness([rel])
+    h.download_raises = True
+    server = h.install(monkeypatch, entry)
+
+    server._check_watched_label(entry)
+
+    assert entry["last_publish_date"] == "2026-07-20"  # unchanged
+
+
+def test_watch_downloads_go_to_staging_folder_sorted_by_label(monkeypatch, tmp_path):
+    staging = str(tmp_path / "-label-releases")
+    rel = _release(13, "New", "2026-07-25", "2026-07-28")
+    entry = {"url": "https://www.beatport.com/label/x/1", "name": "X",
+             "watched_since": "2026-07-01", "last_publish_date": "2026-07-20"}
+    h = _WatchHarness([rel])
+    server = h.install(monkeypatch, entry, staging=staging)
+
+    server._check_watched_label(entry)
+
+    assert h.cfg_seen.downloads_directory == staging
+    assert h.cfg_seen.sort_by_label is True          # one subfolder per label
+    assert server.state.cfg.downloads_directory != staging  # library cfg untouched
+    assert Path(staging).is_dir()
+
+
+# ---- fully-downloaded labels: the mark, and topping up from it ------------------
+
+
+def test_watch_measures_from_full_download_date_not_from_when_watching_started(monkeypatch):
+    """The point of recording a full download: a label grabbed in full in March and
+    only added to the watch list in July must still treat a release Beatport
+    published in May as new. Judged by watched_since alone it looks like
+    pre-existing catalogue and gets baselined away, so it is never downloaded."""
+    rel = _release(20, "Published In May", "2026-05-04", "2026-05-04")
+    entry = {"url": "https://www.beatport.com/label/x/1", "name": "X",
+             "watched_since": "2026-07-01"}
+    h = _WatchHarness([rel], sync={"label_name": "X", "synced_through": "2026-03-01"})
+    server = h.install(monkeypatch, entry)
+
+    result = server._check_watched_label(entry)
+
+    assert result["new_releases"] == 1
+    assert h.downloaded == [rel.store_url()]
+    assert not getattr(h, "baselined", [])
+
+
+def test_update_latest_fetches_only_what_was_published_since_the_mark(monkeypatch):
+    entry = {"url": "https://www.beatport.com/label/x/1", "name": "X",
+             "watched_since": "2026-01-01"}
+    h = _WatchHarness([], sync={"label_name": "X", "synced_through": "2026-07-20"})
+    server = h.install(monkeypatch, entry, lookback=14)
+
+    server._check_watched_label(entry)
+
+    assert h.params_used == ["publish_date=2026-07-06:"]   # mark minus 14d lookback
+
+
+def test_full_download_mark_outranks_a_stale_watch_watermark(monkeypatch):
+    """Both marks exist and disagree — the recorded full download is the one that
+    says the files are actually on disk, so it wins."""
+    entry = {"url": "https://www.beatport.com/label/x/1", "name": "X",
+             "watched_since": "2026-01-01", "last_publish_date": "2026-02-01"}
+    h = _WatchHarness([], sync={"label_name": "X", "synced_through": "2026-07-20"})
+    server = h.install(monkeypatch, entry, lookback=0)
+
+    server._check_watched_label(entry)
+
+    assert h.params_used == ["publish_date=2026-07-20:"]
+
+
+def test_successful_update_advances_the_full_download_mark(monkeypatch):
+    rel = _release(21, "Brand New", "2026-07-25", "2026-07-28")
+    entry = {"url": "https://www.beatport.com/label/x/1", "name": "X",
+             "watched_since": "2026-07-01"}
+    h = _WatchHarness([rel], sync={"label_name": "X", "synced_through": "2026-07-20"})
+    server = h.install(monkeypatch, entry)
+
+    server._check_watched_label(entry)
+
+    assert [w["synced_through"] for w in h.sync_writes] == ["2026-07-28"]
+    assert h.sync_writes[0]["releases"] == 1
+
+
+def test_failed_update_leaves_the_full_download_mark_alone(monkeypatch):
+    """Same reasoning as the watermark: advancing past a release we failed to fetch
+    would put it outside every future window."""
+    rel = _release(22, "Brand New", "2026-07-25", "2026-07-28")
+    entry = {"url": "https://www.beatport.com/label/x/1", "name": "X",
+             "watched_since": "2026-07-01"}
+    h = _WatchHarness([rel], sync={"label_name": "X", "synced_through": "2026-07-20"})
+    h.download_raises = True
+    server = h.install(monkeypatch, entry)
+
+    server._check_watched_label(entry)
+
+    assert h.sync_writes == []
+
+
+def test_unfiltered_whole_label_download_records_the_mark(monkeypatch):
+    from bpdl.webui import server
+
+    writes = []
+    monkeypatch.setattr(server.history, "record_label_sync", lambda **kw: writes.append(kw))
+    monkeypatch.setattr(server, "_newest_publish_date", lambda client, lid: "2026-07-29")
+    monkeypatch.setattr(server, "_client_for", lambda store: object())
+    monkeypatch.setattr(server.bus, "publish", lambda ev: None)
+
+    item = {"url": "https://www.beatport.com/label/x/1", "type": "labels", "id": 1,
+            "store": "beatport", "name": "X", "filters": None}
+    server._record_full_label_download(item, mock.Mock(stats=mock.Mock(failed=0, downloaded=42)))
+
+    assert len(writes) == 1
+    assert writes[0]["synced_through"] == "2026-07-29"
+    assert writes[0]["tracks"] == 42
+
+
+def test_filtered_label_download_is_not_recorded_as_a_full_one(monkeypatch):
+    """A filtered grab covers a slice of the catalogue. Marking it complete would
+    make every later update start after releases that were never fetched."""
+    from bpdl.webui import server
+
+    writes = []
+    monkeypatch.setattr(server.history, "record_label_sync", lambda **kw: writes.append(kw))
+    monkeypatch.setattr(server, "_newest_publish_date", lambda client, lid: "2026-07-29")
+
+    item = {"url": "https://www.beatport.com/label/x/1", "type": "labels", "id": 1,
+            "store": "beatport", "name": "X", "filters": {"genres": [8]}}
+    server._record_full_label_download(item, mock.Mock(stats=mock.Mock(failed=0, downloaded=3)))
+
+    assert writes == []
+
+
+def test_label_download_with_failures_is_not_recorded_as_a_full_one(monkeypatch):
+    from bpdl.webui import server
+
+    writes = []
+    monkeypatch.setattr(server.history, "record_label_sync", lambda **kw: writes.append(kw))
+    monkeypatch.setattr(server, "_newest_publish_date", lambda client, lid: "2026-07-29")
+
+    item = {"url": "https://www.beatport.com/label/x/1", "type": "labels", "id": 1,
+            "store": "beatport", "name": "X", "filters": None}
+    server._record_full_label_download(item, mock.Mock(stats=mock.Mock(failed=2, downloaded=40)))
+
+    assert writes == []
+
+
+def test_sync_mark_never_rewinds(tmp_path, monkeypatch):
+    from bpdl import history
+
+    monkeypatch.setattr(history, "_path", lambda: tmp_path / "h.sqlite3")
+    history.init_db()
+    history.record_label_sync(1, "beatport", "u", "X", "2026-07-20", tracks=10)
+    history.record_label_sync(1, "beatport", "u", "X", "2026-01-01", releases=2, tracks=5)
+
+    row = history.get_label_sync(1)
+    assert row["synced_through"] == "2026-07-20"   # not rewound
+    assert row["tracks"] == 15                      # but counters still accumulate
+    assert row["releases"] == 2
+
+
+def test_forget_label_sync_removes_the_mark(tmp_path, monkeypatch):
+    from bpdl import history
+
+    monkeypatch.setattr(history, "_path", lambda: tmp_path / "h.sqlite3")
+    history.init_db()
+    history.record_label_sync(1, "beatport", "u", "X", "2026-07-20")
+    assert history.get_label_sync(1) is not None
+
+    history.forget_label_sync(1)
+    assert history.get_label_sync(1) is None

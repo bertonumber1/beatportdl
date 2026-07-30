@@ -162,6 +162,14 @@ class Release:
     upc: str = ""
     label: Label = field(default_factory=Label)
     date: str = ""
+    # Beatport has two distinct dates and they mean different things:
+    #   date         = new_release_date — the original street/release date, which
+    #                  for a reissue or a back-catalogue upload can be decades old.
+    #   publish_date = when the release actually landed on Beatport.
+    # "Is this new to us?" is a publish_date question; "is this out yet?" is a
+    # date question. Conflating them makes the watch-list skip every arrival from
+    # a label that uploads its back catalogue (see server._check_watched_label).
+    publish_date: str = ""
     image: Image = field(default_factory=Image)
     bpm_min: int = 0
     bpm_max: int = 0
@@ -183,6 +191,7 @@ class Release:
             upc=data.get("upc", ""),
             label=Label.from_json(data.get("label") or {}, store),
             date=data.get("new_release_date", ""),
+            publish_date=(data.get("publish_date") or "")[:10],
             image=Image.from_json(data.get("image")),
             bpm_min=bpm_range.get("min") or 0,
             bpm_max=bpm_range.get("max") or 0,

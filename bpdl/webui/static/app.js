@@ -975,6 +975,26 @@ function handleEvent(ev) {
       refreshWatchList();
       break;
     }
+    case "label_synced":
+      showToast(`${ev.name}: full catalogue downloaded, tracked from ${ev.synced_through}. ` +
+                `Use "Update to latest" from now on.`, "success");
+      refreshWatchList();
+      break;
+    case "label_updated": {
+      const note = ev.newly_pending ? ` ${ev.newly_pending} pre-release(s) spotted.` : "";
+      if (ev.error) {
+        showToast(`${ev.name}: update failed — ${ev.error}`, "error");
+      } else if (ev.new_releases > 0) {
+        $("#watch-status").textContent =
+          `${ev.name}: ${ev.new_releases} new release(s), ${ev.new_tracks} track(s) downloaded — now held to ${ev.synced_through}.${note}`;
+        showToast(`${ev.name}: ${ev.new_releases} new release(s) downloaded.`, "success");
+      } else {
+        $("#watch-status").textContent = `${ev.name}: already up to date.${note}`;
+        showToast(`${ev.name} is already up to date.`, "success");
+      }
+      refreshWatchList();
+      break;
+    }
   }
 }
 
@@ -1039,12 +1059,31 @@ function renderWatchSection(el, heading, kind, entries) {
       ? `${pending.length} upcoming ${noun}${pending.length > 1 ? "s" : ""}: ` +
         pending.map((p) => `${p.release_name} (${p.expected_date})`).join(", ")
       : "";
+    // Two different marks, and the difference matters. A full download means the
+    // catalogue is on disk up to that date, so updates start there. The watermark
+    // only means we looked that far. Show whichever is authoritative.
+    const sync = w.sync || null;
+    const mark = kind === "artist" ? "" : sync && sync.synced_through
+      ? `full catalogue to ${sync.synced_through}`
+      : w.last_publish_date
+      ? `checked to ${w.last_publish_date}`
+      : "not checked yet";
     row.innerHTML = `
       <div style="display:flex;align-items:center;gap:8px;">
         <span style="flex:1;">${esc(w.name)}</span>
+        ${mark ? `<span class="muted" style="font-size:10.5px;white-space:nowrap;padding-right:14px;">${esc(mark)}</span>` : ""}
       </div>
       ${pendingText ? `<span class="muted" style="font-size:11px;">${esc(pendingText)}</span>` : ""}
     `;
+    if (kind === "label" && sync && sync.synced_through) {
+      const upd = document.createElement("button");
+      upd.className = "btn ghost small";
+      upd.style.cssText = "align-self:flex-start;margin-top:2px;";
+      upd.textContent = "Update to latest";
+      upd.title = `Grab everything Beatport has published since ${sync.synced_through}`;
+      upd.addEventListener("click", () => updateLabelToLatest(w.url, upd));
+      row.appendChild(upd);
+    }
     const removeBtn = document.createElement("button");
     removeBtn.className = "card-remove";
     removeBtn.style.cssText = "position:absolute;top:4px;right:4px;";
@@ -1056,6 +1095,22 @@ function renderWatchSection(el, heading, kind, entries) {
     row.appendChild(removeBtn);
     el.appendChild(row);
   });
+}
+
+async function updateLabelToLatest(url, btn) {
+  const was = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = "Updating…";
+  try {
+    const res = await api("POST", "/api/label/update-latest", { url });
+    showToast(`Checking for releases published since ${res.since}…`, "success");
+  } catch (e) {
+    showToast(`Update failed: ${e.message}`, "error");
+  } finally {
+    btn.disabled = false;
+    btn.textContent = was;
+    refreshWatchList();
+  }
 }
 
 async function saveSettingsModal() {
