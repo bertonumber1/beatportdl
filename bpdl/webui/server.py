@@ -910,6 +910,18 @@ def start_download() -> dict:
 
 class WatchAddPayload(BaseModel):
     url: str
+    watch_from: str | None = None
+    watch_to: str | None = None
+
+
+class WatchRangePayload(BaseModel):
+    watch_from: str | None = None
+    watch_to: str | None = None
+    # Baseline rows are "seen but not downloaded" marks. Widening a window backwards
+    # is useless while they stand, because is_release_seen() skips those releases
+    # before the range is ever consulted. Clearing them re-opens the back catalogue
+    # for re-evaluation; no downloaded file is touched.
+    rescan: bool = False
 
 
 def _sync_for_url(url: str) -> dict | None:
@@ -960,9 +972,51 @@ def add_watch(payload: WatchAddPayload) -> dict:
     # on or after today count as genuinely new; the existing back-catalogue gets
     # baselined (marked seen, not downloaded) the first time it's checked.
     entry = {"url": payload.url, "name": name, "watched_since": datetime.now(timezone.utc).date().isoformat()}
+    for key, raw in (("watch_from", payload.watch_from), ("watch_to", payload.watch_to)):
+        val = _valid_range_date(raw, key)
+        if val:
+            entry[key] = val
     target.append(entry)
     config_module.save(state.cfg, state.config_path)
     return _watch_response()
+
+
+def _valid_range_date(raw: str | None, field: str) -> str:
+    """ISO date or empty. Rejects junk loudly rather than silently ignoring it —
+    a mistyped 'from' would otherwise look accepted and quietly change nothing."""
+    val = (raw or "").strip()
+    if not val:
+        return ""
+    if _parse_release_date(val) is None:
+        raise HTTPException(400, f"{field} must be a date like 2026-01-01")
+    return val
+
+
+@app.patch("/api/watch/label/{index}/range")
+def set_watch_range(index: int, payload: WatchRangePayload) -> dict:
+    _require_login()
+    target = state.cfg.watched_labels
+    if not 0 <= index < len(target):
+        raise HTTPException(404, "no such watched label")
+    entry = target[index]
+    frm = _valid_range_date(payload.watch_from, "watch_from")
+    to = _valid_range_date(payload.watch_to, "watch_to")
+    if frm and to and _parse_release_date(to) < _parse_release_date(frm):
+        raise HTTPException(400, "watch_to is before watch_from")
+    for key, val in (("watch_from", frm), ("watch_to", to)):
+        if val:
+            entry[key] = val
+        else:
+            entry.pop(key, None)
+    cleared = 0
+    if payload.rescan:
+        cleared = history.clear_label_baselines(entry.get("name") or "")
+        # The watermark says "we already looked this far". After a rescan that is
+        # exactly the claim we are retracting, so drop it or the widened window
+        # gets narrowed straight back on the next check.
+        entry.pop(_WATERMARK_KEY, None)
+    config_module.save(state.cfg, state.config_path)
+    return {**_watch_response(), "baselines_cleared": cleared}
 
 
 @app.delete("/api/watch/{kind}/{index}")
@@ -1136,9 +1190,16 @@ def _watch_window_start(entry: dict, sync: dict | None = None) -> date | None:
     mark = _parse_release_date((sync or {}).get("synced_through") or "")
     if mark is None:
         mark = _parse_release_date(entry.get(_WATERMARK_KEY) or "")
-    if mark is None:
-        return None
-    return mark - timedelta(days=max(0, state.cfg.watch_lookback_days))
+    start = None if mark is None else mark - timedelta(days=max(0, state.cfg.watch_lookback_days))
+    # An explicit "from" reaches back BEHIND the watermark on purpose: asking for
+    # releases since January is a request to go and fetch them, and a window that
+    # began at the watermark would never show Beatport anything older than the last
+    # check. Widen the fetch window; the accept/reject decision stays in
+    # _check_watched_label, which still baselines whatever falls outside the range.
+    frm = _parse_release_date(entry.get("watch_from") or "")
+    if frm is not None and (start is None or frm < start):
+        return frm
+    return start
 
 
 def _check_watched_label(entry: dict) -> dict:
@@ -1157,6 +1218,13 @@ def _check_watched_label(entry: dict) -> dict:
     sync = history.get_label_sync(link.id)
     synced_through = _parse_release_date((sync or {}).get("synced_through") or "")
     watched_since = synced_through or _parse_release_date(entry.get("watched_since", "")) or date.min
+    # Optional explicit range. "from" is a deliberate instruction and outranks both
+    # marks above — the point of setting it is to reach back past them. "to" caps the
+    # far end so a finished historical backfill stops re-downloading current output.
+    range_from = _parse_release_date(entry.get("watch_from") or "")
+    range_to = _parse_release_date(entry.get("watch_to") or "")
+    if range_from is not None:
+        watched_since = range_from
 
     # First check walks everything so the back catalogue gets baselined; every
     # check after that fetches only what Beatport published since the mark.
@@ -1187,6 +1255,11 @@ def _check_watched_label(entry: dict) -> dict:
             elif published is None:
                 # No ingest date to judge by — baseline rather than guess-download.
                 history.mark_release_baseline(release.id, release.name, release.label.name)
+            elif range_to is not None and published > range_to:
+                # Past the end of an explicit window — not wanted, but record it so
+                # the next check doesn't keep re-evaluating the same releases.
+                history.mark_release_baseline(release.id, release.name, release.label.name,
+                                              reason="baseline (after watch range)")
             elif published >= watched_since:
                 new_releases.append(release)
             else:

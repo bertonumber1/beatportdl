@@ -184,6 +184,22 @@ def mark_release_baseline(release_id: int, release_name: str, label: str, reason
     )
 
 
+def clear_label_baselines(label: str) -> int:
+    """Forget the "seen but not downloaded" marks for a label, returning how many
+    went. Used when a watch range is widened backwards: is_release_seen() consults
+    these before any date logic, so without clearing them a re-opened window finds
+    nothing. Only baseline rows match — real downloads have a file_path and a
+    different status, and are never touched."""
+    if not label:
+        return 0
+    with _db() as conn:
+        cur = conn.execute(
+            "DELETE FROM downloads WHERE label = ? AND status = ? AND reason LIKE 'baseline%'",
+            (label, STATUS_SKIPPED),
+        )
+        return cur.rowcount or 0
+
+
 def is_track_seen(track_id: int) -> bool:
     """True if we have any record at all (any status) for this track — the
     track-level analogue of is_release_seen, used by the artist watch-list to

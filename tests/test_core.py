@@ -651,3 +651,63 @@ def test_forget_label_sync_removes_the_mark(tmp_path, monkeypatch):
 
     history.forget_label_sync(1)
     assert history.get_label_sync(1) is None
+
+
+def test_watch_from_reaches_back_behind_the_watermark(monkeypatch):
+    """An explicit 'from' is a request to go and fetch history, so the fetch window
+    must widen past the watermark — otherwise Beatport is never asked for anything
+    older than the last check and the range silently returns nothing."""
+    entry = {"url": "https://www.beatport.com/label/x/1", "name": "X",
+             "watched_since": "2026-07-29", "last_publish_date": "2026-07-31",
+             "watch_from": "2026-01-01"}
+    h = _WatchHarness([], sync=None)
+    server = h.install(monkeypatch, entry, lookback=14)
+
+    server._check_watched_label(entry)
+
+    assert h.params_used == ["publish_date=2026-01-01:"]
+
+
+def test_watch_from_downloads_releases_older_than_watched_since(monkeypatch):
+    """The back catalogue inside the range is wanted, not baselined away."""
+    old = _release(31, "March Release", "2026-03-04", "2026-03-04")
+    entry = {"url": "https://www.beatport.com/label/x/1", "name": "X",
+             "watched_since": "2026-07-29", "watch_from": "2026-01-01"}
+    h = _WatchHarness([old], sync=None)
+    server = h.install(monkeypatch, entry, lookback=0)
+
+    result = server._check_watched_label(entry)
+
+    assert result["new_releases"] == 1
+    assert h.downloaded == [old.store_url()]
+    assert not getattr(h, "baselined", [])
+
+
+def test_watch_to_caps_the_far_end_of_the_range(monkeypatch):
+    """Past 'to' is out of scope: baselined, never downloaded."""
+    inside = _release(32, "In Range", "2026-02-02", "2026-02-02")
+    after = _release(33, "Too New", "2026-06-06", "2026-06-06")
+    entry = {"url": "https://www.beatport.com/label/x/1", "name": "X",
+             "watched_since": "2026-01-01",
+             "watch_from": "2026-01-01", "watch_to": "2026-03-31"}
+    h = _WatchHarness([inside, after], sync=None)
+    server = h.install(monkeypatch, entry, lookback=0)
+
+    result = server._check_watched_label(entry)
+
+    assert result["new_releases"] == 1
+    assert h.downloaded == [inside.store_url()]
+    assert getattr(h, "baselined", []) == [after.id]
+
+
+def test_watch_from_outranks_a_full_download_mark(monkeypatch):
+    """The sync mark normally wins, but an explicit 'from' is the stronger, newer
+    human instruction — backfilling behind a full download has to be possible."""
+    entry = {"url": "https://www.beatport.com/label/x/1", "name": "X",
+             "watched_since": "2026-07-01", "watch_from": "2026-01-01"}
+    h = _WatchHarness([], sync={"label_name": "X", "synced_through": "2026-07-20"})
+    server = h.install(monkeypatch, entry, lookback=0)
+
+    server._check_watched_label(entry)
+
+    assert h.params_used == ["publish_date=2026-01-01:"]

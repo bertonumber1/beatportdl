@@ -229,6 +229,14 @@ input:focus, select:focus {
 
 /* ---- release watch (main page) ---- */
 .watch-blurb { margin: -6px 0 12px; }
+.watch-range { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 4px; }
+.watch-range label { display: flex; align-items: center; gap: 4px; font-size: 11px; color: var(--muted); }
+.watch-range input[type="date"] {
+  background: var(--input-bg, rgba(0,0,0,.25)); color: inherit; font: inherit; font-size: 11px;
+  border: 1px solid var(--border); border-radius: 6px; padding: 2px 6px;
+}
+.watch-range input[type="date"]:focus { border-color: var(--accent); outline: none; }
+.watch-rescan { cursor: pointer; }
 .watch-add-row { display: flex; gap: 10px; margin-bottom: 12px; }
 .watch-add-row input {
   flex: 1; background: var(--surface); border: 1px solid var(--border-light);

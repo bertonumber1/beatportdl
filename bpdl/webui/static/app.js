@@ -1075,6 +1075,21 @@ function renderWatchSection(el, heading, kind, entries) {
       </div>
       ${pendingText ? `<span class="muted" style="font-size:11px;">${esc(pendingText)}</span>` : ""}
     `;
+    if (kind === "label") {
+      const range = document.createElement("div");
+      range.className = "watch-range";
+      range.innerHTML = `
+        <label>From<input type="date" class="watch-from" value="${esc(w.watch_from || "")}"></label>
+        <label>To<input type="date" class="watch-to" value="${esc(w.watch_to || "")}"></label>
+        <label class="watch-rescan" title="Re-examine releases already marked as seen. Needed when widening the range backwards.">
+          <input type="checkbox" class="watch-rescan-box"> re-scan
+        </label>
+        <button class="btn ghost small watch-range-save">Save range</button>
+      `;
+      range.querySelector(".watch-range-save").addEventListener("click", (ev) =>
+        saveWatchRange(idx, range, ev.target));
+      row.appendChild(range);
+    }
     if (kind === "label" && sync && sync.synced_through) {
       const upd = document.createElement("button");
       upd.className = "btn ghost small";
@@ -1095,6 +1110,32 @@ function renderWatchSection(el, heading, kind, entries) {
     row.appendChild(removeBtn);
     el.appendChild(row);
   });
+}
+
+async function saveWatchRange(index, root, btn) {
+  const was = btn.textContent;
+  const rescan = root.querySelector(".watch-rescan-box").checked;
+  btn.disabled = true;
+  btn.textContent = "Saving…";
+  try {
+    const res = await api("PATCH", `/api/watch/label/${index}/range`, {
+      watch_from: root.querySelector(".watch-from").value,
+      watch_to: root.querySelector(".watch-to").value,
+      rescan,
+    });
+    showToast(
+      rescan
+        ? `Range saved, ${res.baselines_cleared} releases re-opened — they download on the next check.`
+        : "Range saved.",
+      "success",
+    );
+    renderWatchList(res.watched_labels || [], res.watched_artists || []);
+  } catch (e) {
+    showToast(`Could not save range: ${e.message}`, "error");
+  } finally {
+    btn.disabled = false;
+    btn.textContent = was;
+  }
 }
 
 async function updateLabelToLatest(url, btn) {
