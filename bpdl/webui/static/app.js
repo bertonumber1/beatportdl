@@ -1084,7 +1084,7 @@ function renderWatchSection(el, heading, kind, entries) {
         <label class="watch-rescan" title="Re-examine releases already marked as seen. Needed when widening the range backwards.">
           <input type="checkbox" class="watch-rescan-box"> re-scan
         </label>
-        <button class="btn ghost small watch-range-save">Save range</button>
+        <button class="btn ghost small watch-range-save">Save &amp; check now</button>
       `;
       range.querySelector(".watch-range-save").addEventListener("click", (ev) =>
         saveWatchRange(idx, range, ev.target));
@@ -1122,11 +1122,13 @@ async function saveWatchRange(index, root, btn) {
       watch_from: root.querySelector(".watch-from").value,
       watch_to: root.querySelector(".watch-to").value,
       rescan,
+      check_now: true,
     });
+    const cleared = rescan ? `${res.baselines_cleared} releases re-opened, ` : "";
     showToast(
-      rescan
-        ? `Range saved, ${res.baselines_cleared} releases re-opened — they download on the next check.`
-        : "Range saved.",
+      res.check_started
+        ? `Range saved — ${cleared}checking this label now.`
+        : `Range saved, ${cleared}but a check is already running; it runs on the next one.`,
       "success",
     );
     renderWatchList(res.watched_labels || [], res.watched_artists || []);

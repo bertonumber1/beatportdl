@@ -922,6 +922,8 @@ class WatchRangePayload(BaseModel):
     # before the range is ever consulted. Clearing them re-opens the back catalogue
     # for re-evaluation; no downloaded file is touched.
     rescan: bool = False
+    # Check this label straight away rather than waiting for the scheduled sweep.
+    check_now: bool = False
 
 
 def _sync_for_url(url: str) -> dict | None:
@@ -1016,7 +1018,24 @@ def set_watch_range(index: int, payload: WatchRangePayload) -> dict:
         # gets narrowed straight back on the next check.
         entry.pop(_WATERMARK_KEY, None)
     config_module.save(state.cfg, state.config_path)
-    return {**_watch_response(), "baselines_cleared": cleared}
+    started = False
+    if payload.check_now and not state.watch_checking:
+        threading.Thread(target=_run_watch_check, args=([entry],), daemon=True).start()
+        started = True
+    return {**_watch_response(), "baselines_cleared": cleared, "check_started": started}
+
+
+@app.post("/api/watch/label/{index}/check")
+def check_watched_label_now(index: int) -> dict:
+    """Check one watched label immediately, without touching the others."""
+    _require_login()
+    if not 0 <= index < len(state.cfg.watched_labels):
+        raise HTTPException(404, "no such watched label")
+    if state.watch_checking:
+        raise HTTPException(400, "a watch check is already running")
+    entry = state.cfg.watched_labels[index]
+    threading.Thread(target=_run_watch_check, args=([entry],), daemon=True).start()
+    return {"started": True, "name": entry.get("name", "")}
 
 
 @app.delete("/api/watch/{kind}/{index}")
@@ -1385,7 +1404,10 @@ def _check_watched_artist(entry: dict) -> dict:
     }
 
 
-def _run_watch_check() -> None:
+def _run_watch_check(only: list[dict] | None = None) -> None:
+    """Run the watch check. `only` limits it to specific label entries — setting a
+    date range is a "do it now" instruction, and without this the new window would
+    sit unused until the next scheduled sweep hours later."""
     if state.watch_checking or state.downloading or state.login_status != "ok":
         return
     if not (state.cfg.watched_labels or state.cfg.watched_artists):
@@ -1394,10 +1416,13 @@ def _run_watch_check() -> None:
     state.watch_checking = True
     # Watch downloads must never inherit filters left over from a queue item.
     _apply_filters(None)
-    watched = (
-        [(e, _check_watched_label) for e in state.cfg.watched_labels]
-        + [(e, _check_watched_artist) for e in state.cfg.watched_artists]
-    )
+    if only is not None:
+        watched = [(e, _check_watched_label) for e in only]
+    else:
+        watched = (
+            [(e, _check_watched_label) for e in state.cfg.watched_labels]
+            + [(e, _check_watched_artist) for e in state.cfg.watched_artists]
+        )
     bus.publish({"type": "watch_check_start", "count": len(watched)})
     summary_lines = []
     total_new_releases = total_new_tracks = total_pending = 0

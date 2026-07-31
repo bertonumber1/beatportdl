@@ -711,3 +711,26 @@ def test_watch_from_outranks_a_full_download_mark(monkeypatch):
     server._check_watched_label(entry)
 
     assert h.params_used == ["publish_date=2026-01-01:"]
+
+
+def test_check_can_be_limited_to_one_label(monkeypatch):
+    """Setting a range is a 'do it now' instruction, so it must be able to check
+    that label alone rather than sweeping everything that is watched."""
+    rel = _release(41, "In Range", "2026-02-02", "2026-02-02")
+    entry = {"url": "https://www.beatport.com/label/x/1", "name": "X",
+             "watched_since": "2026-01-01", "watch_from": "2026-01-01"}
+    other = {"url": "https://www.beatport.com/label/y/2", "name": "Y",
+             "watched_since": "2026-01-01"}
+    h = _WatchHarness([rel], sync=None)
+    server = h.install(monkeypatch, entry, lookback=0)
+    server.state.cfg.watched_labels = [entry, other]
+    monkeypatch.setattr(server.state, "login_status", "ok")
+    monkeypatch.setattr(server.state, "downloading", False)
+    monkeypatch.setattr(server.state, "watch_checking", False)
+    monkeypatch.setattr(server, "_apply_filters", lambda f: None)
+
+    server._run_watch_check(only=[entry])
+
+    # One label checked, not both — a second pass would fetch twice.
+    assert len(h.params_used) == 1
+    assert h.downloaded == [rel.store_url()]
