@@ -65,7 +65,13 @@ class App:
     def _skip_or_error(self, url: str, step: str, err: Exception) -> None:
         reason = skippable_reason(err)
         if reason:
-            console.print(f"[yellow][{url}][/yellow] skipped ({reason})")
+            # Print the underlying error alongside the bucket name. The reason is a
+            # coarse label — "unavailable" covers both 403 (refused: entitlement,
+            # licensing) and 404 (no downloadable asset), which need completely
+            # different fixes. Printing only the label made a whole run of
+            # "skipped (unavailable)" undiagnosable, including for the user's own
+            # tester. stats keeps the bare reason so the summary still groups.
+            console.print(f"[yellow][{url}][/yellow] skipped ({reason}) — {err}")
             self.stats.add_skipped(reason)
         else:
             self._log_error(url, step, err)
@@ -167,13 +173,18 @@ class App:
                     self.on_event({"type": "track_skipped", "id": track_key, "reason": "file already exists", "url": track.store_url()})
         except Exception as e:
             reason = skippable_reason(e)
-            _record(history.STATUS_SKIPPED if reason else history.STATUS_FAILED, reason=reason or str(e))
+            # `reason or str(e)` threw the real error away whenever a skip pattern
+            # matched, because the pattern name is always truthy — so the status code
+            # and Beatport's own `detail` message never reached the history row or the
+            # web UI. Keep both: the label for grouping, the detail for diagnosis.
+            detail = f"{reason}: {e}" if reason else str(e)
+            _record(history.STATUS_SKIPPED if reason else history.STATUS_FAILED, reason=detail)
             if self.on_event:
                 self.on_event({
                     "type": "track_skipped" if reason else "track_error",
                     "id": track_key,
                     "name": f"{track.name} ({track.mix_name})" if track.mix_name else track.name,
-                    "reason": reason or str(e),
+                    "reason": detail,
                     "url": track.store_url(),
                 })
             self._skip_or_error(track.store_url(), "handle track", e)
