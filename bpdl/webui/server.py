@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import queue
+import re
 import threading
 import time
 from contextlib import asynccontextmanager
@@ -38,7 +39,37 @@ from bpdl.scanner import for_paginated, rank_map, sanitize_params, scan_artist, 
 from bpdl.search import extract_store_tag
 
 STATIC_DIR = Path(__file__).parent / "static"
-VERSION = "2.5.0"
+
+
+def _version() -> str:
+    """The installed package's version, not a second copy of it.
+
+    This was a hardcoded literal and it drifted: v2.6.0, v2.6.1 and v2.6.2 each bumped
+    pyproject.toml and left this at "2.5.0", so /api/status — the one place anyone
+    checks what is actually running — reported a version three releases stale and made
+    a correctly-deployed container look like it had never been rebuilt.
+    """
+    try:
+        from importlib.metadata import version
+
+        return version("beatportdl-webui")
+    except Exception:
+        pass
+    # Running from a source checkout that was never pip-installed. Read pyproject
+    # with a regex rather than tomllib: this project supports 3.10, where tomllib
+    # does not exist, and a version string is not worth a dependency.
+    try:
+        pyproject = Path(__file__).resolve().parents[2] / "pyproject.toml"
+        m = re.search(r'^version\s*=\s*"([^"]+)"',
+                      pyproject.read_text(encoding="utf-8"), re.M)
+        if m:
+            return m.group(1)
+    except Exception:
+        pass
+    return "unknown"
+
+
+VERSION = _version()
 
 bus = EventBus()
 
