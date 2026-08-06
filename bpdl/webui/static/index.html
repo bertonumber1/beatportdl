@@ -19,21 +19,25 @@
       <h1 id="hero-logo">Unspok3n</h1>
       <span id="hero-remix">Smash-n-Grab remix</span>
     </div>
-    <p id="hero-tagline">Beatport / Beatsource downloader</p>
+    <p id="hero-tagline" data-i18n="hero.tagline">Beatport / Beatsource downloader</p>
   </div>
 
   <header id="topbar">
     <div id="topbar-right">
       <div id="conn-status" class="pill pending">
-        <span class="dot"></span><span class="label">Starting…</span>
+        <span class="dot"></span><span class="label" data-i18n="top.starting">Starting…</span>
       </div>
-      <button id="stats-btn" class="top-btn" title="Library stats">
+      <!-- Language flags sit between the status pill and the Stats/Settings buttons:
+           right in the middle of the bar, where a visitor who cannot read any of the
+           surrounding words still lands on them. Populated by i18n.js. -->
+      <div id="lang-switch"></div>
+      <button id="stats-btn" class="top-btn" data-i18n-title="top.stats" title="Library stats">
         <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="5" y1="20" x2="5" y2="12"/><line x1="12" y1="20" x2="12" y2="5"/><line x1="19" y1="20" x2="19" y2="14"/></svg>
-        Stats
+        <span data-i18n="top.stats">Stats</span>
       </button>
-      <button id="settings-btn" class="top-btn" title="Settings">
+      <button id="settings-btn" class="top-btn" data-i18n-title="top.settings" title="Settings">
         <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="4" y1="8" x2="20" y2="8"/><circle cx="9.5" cy="8" r="2.4"/><line x1="4" y1="16" x2="20" y2="16"/><circle cx="14.5" cy="16" r="2.4"/></svg>
-        Settings
+        <span data-i18n="top.settings">Settings</span>
       </button>
     </div>
   </header>
@@ -42,30 +46,30 @@
 
     <!-- First-run / incomplete config gate -->
     <section id="setup-panel" class="panel hidden">
-      <h1>Let's get set up</h1>
-      <p class="muted">A few required settings before BP-DL can talk to Beatport / Beatsource.</p>
+      <h1 data-i18n="setup.title">Let's get set up</h1>
+      <p class="muted" data-i18n="setup.blurb">A few required settings before BP-DL can talk to Beatport / Beatsource.</p>
       <form id="setup-form" class="settings-form">
         <div class="field">
-          <label>Username</label>
+          <label data-i18n="field.username">Username</label>
           <input name="username" type="text" required>
         </div>
         <div class="field">
-          <label>Password</label>
+          <label data-i18n="field.password">Password</label>
           <input name="password" type="password" required>
         </div>
         <div class="field">
-          <label>Downloads directory</label>
+          <label data-i18n="field.downloads_dir">Downloads directory</label>
           <input name="downloads_directory" type="text" placeholder="/downloads" required>
         </div>
         <div class="field">
-          <label>Quality</label>
+          <label data-i18n="field.quality">Quality</label>
           <select name="quality">
-            <option value="lossless">Lossless (FLAC)</option>
-            <option value="high">High (AAC 256kbps)</option>
-            <option value="medium">Medium (AAC 128kbps)</option>
+            <option value="lossless" data-i18n="quality.lossless">Lossless (FLAC)</option>
+            <option value="high" data-i18n="quality.high">High (AAC 256kbps)</option>
+            <option value="medium" data-i18n="quality.medium">Medium (AAC 128kbps)</option>
           </select>
         </div>
-        <button type="submit" class="btn primary">Save &amp; connect</button>
+        <button type="submit" class="btn primary" data-i18n="setup.submit">Save &amp; connect</button>
       </form>
       <p id="setup-error" class="error-text hidden"></p>
     </section>
@@ -73,94 +77,94 @@
     <!-- Connecting / login error -->
     <section id="connecting-panel" class="panel hidden">
       <div id="connecting-spinner" class="spinner big"></div>
-      <p id="connecting-text">Connecting to Beatport…</p>
-      <button id="retry-login-btn" class="btn hidden">Retry connection</button>
+      <p id="connecting-text" data-i18n="connecting.text">Connecting to Beatport…</p>
+      <button id="retry-login-btn" class="btn hidden" data-i18n="connecting.retry">Retry connection</button>
     </section>
 
     <!-- Main dashboard -->
     <section id="dashboard" class="hidden">
 
       <div id="input-row">
-        <input id="url-input" type="text" placeholder="Paste a label / artist / track / release URL, or type a search query…" autocomplete="off">
-        <button id="add-btn" class="btn primary">Add</button>
+        <input id="url-input" type="text" data-i18n-placeholder="input.placeholder" placeholder="Paste a label / artist / track / release URL, or type a search query…" autocomplete="off">
+        <button id="add-btn" class="btn primary" data-i18n="input.add">Add</button>
       </div>
       <p id="input-status" class="muted small"></p>
 
       <div class="section-head">
-        <h2>Release watch <span id="watch-count" class="count-badge">0</span></h2>
+        <h2><span data-i18n="watch.title">Release watch</span> <span id="watch-count" class="count-badge">0</span></h2>
         <div class="section-actions">
-          <button id="watch-check-now-btn" class="btn ghost small">Check now</button>
+          <button id="watch-check-now-btn" class="btn ghost small" data-i18n="watch.check_now">Check now</button>
         </div>
       </div>
-      <p class="muted small watch-blurb">Watched labels get every new release grabbed automatically; watched artists get their new tracks. Check interval lives in Settings.</p>
+      <p class="muted small watch-blurb" data-i18n="watch.blurb">Watched labels get every new release grabbed automatically; watched artists get their new tracks. Check interval lives in Settings.</p>
       <div class="watch-add-row">
-        <input id="watch-url-input" type="text" placeholder="Paste a label or artist URL to watch…">
-        <button id="watch-add-btn" class="btn ghost">Watch</button>
+        <input id="watch-url-input" type="text" data-i18n-placeholder="watch.placeholder" placeholder="Paste a label or artist URL to watch…">
+        <button id="watch-add-btn" class="btn ghost" data-i18n="watch.add">Watch</button>
       </div>
       <div id="watch-list" class="chip-list"></div>
       <p id="watch-status" class="muted small"></p>
 
       <div class="section-head">
-        <h2>Explore <span class="muted small" id="explore-count"></span></h2>
+        <h2><span data-i18n="explore.title">Explore</span> <span class="muted small" id="explore-count"></span></h2>
         <div class="section-actions">
-          <button id="explore-toggle" class="btn ghost small">Browse Beatport ▾</button>
+          <button id="explore-toggle" class="btn ghost small" data-i18n="explore.browse">Browse Beatport ▾</button>
         </div>
       </div>
       <div id="explore-body" class="hidden">
         <div class="filter-controls">
-          <div class="field"><label>Genre</label><select id="explore-genre"><option value="">All genres (Beatport Top 100)</option></select></div>
+          <div class="field"><label data-i18n="explore.genre">Genre</label><select id="explore-genre"><option value="" data-i18n="explore.all_genres">All genres (Beatport Top 100)</option></select></div>
           <div class="field explore-tabs">
-            <label>Show</label>
+            <label data-i18n="explore.show">Show</label>
             <div class="tab-row">
-              <button class="btn ghost small explore-tab selected" data-section="top100">Top 100</button>
-              <button class="btn ghost small explore-tab" data-section="tracks">New tracks</button>
-              <button class="btn ghost small explore-tab" data-section="releases">New releases</button>
-              <button class="btn ghost small explore-tab" data-section="charts">DJ charts</button>
+              <button class="btn ghost small explore-tab selected" data-section="top100" data-i18n="explore.top100">Top 100</button>
+              <button class="btn ghost small explore-tab" data-section="tracks" data-i18n="explore.new_tracks">New tracks</button>
+              <button class="btn ghost small explore-tab" data-section="releases" data-i18n="explore.new_releases">New releases</button>
+              <button class="btn ghost small explore-tab" data-section="charts" data-i18n="explore.dj_charts">DJ charts</button>
             </div>
           </div>
-          <div class="field narrow explore-bpm hidden"><label>BPM min</label><input id="explore-bpm-min" type="number" min="0" max="400" placeholder="any"></div>
-          <div class="field narrow explore-bpm hidden"><label>BPM max</label><input id="explore-bpm-max" type="number" min="0" max="400" placeholder="any"></div>
-          <button id="explore-apply" class="btn primary hidden">Apply</button>
+          <div class="field narrow explore-bpm hidden"><label data-i18n="filter.bpm_min">BPM min</label><input id="explore-bpm-min" type="number" min="0" max="400" data-i18n-placeholder="filter.any" placeholder="any"></div>
+          <div class="field narrow explore-bpm hidden"><label data-i18n="filter.bpm_max">BPM max</label><input id="explore-bpm-max" type="number" min="0" max="400" data-i18n-placeholder="filter.any" placeholder="any"></div>
+          <button id="explore-apply" class="btn primary hidden" data-i18n="filter.apply">Apply</button>
         </div>
         <div class="wizard-browse-head">
-          <p class="muted small" id="explore-status">Loading…</p>
+          <p class="muted small" id="explore-status" data-i18n="browse.loading">Loading…</p>
           <span class="muted small" id="explore-selcount">0 selected</span>
         </div>
         <div id="explore-grid" class="browse-grid"></div>
         <div class="wizard-browse-foot">
           <div class="browse-pager">
-            <button id="explore-prev" class="btn ghost small" disabled>&larr; Prev</button>
+            <button id="explore-prev" class="btn ghost small" disabled data-i18n="browse.prev">&larr; Prev</button>
             <span class="muted small" id="explore-page"></span>
-            <button id="explore-next" class="btn ghost small" disabled>Next &rarr;</button>
-            <label class="muted small selpage"><input type="checkbox" id="explore-selectall"> select page</label>
+            <button id="explore-next" class="btn ghost small" disabled data-i18n="browse.next">Next &rarr;</button>
+            <label class="muted small selpage"><input type="checkbox" id="explore-selectall"> <span data-i18n="browse.select_page">select page</span></label>
           </div>
-          <button id="explore-add" class="btn success" disabled>Add selected to queue</button>
+          <button id="explore-add" class="btn success" disabled data-i18n="browse.add_selected">Add selected to queue</button>
         </div>
       </div>
 
       <div class="section-head">
-        <h2>Queue <span id="queue-count" class="count-badge">0</span></h2>
+        <h2><span data-i18n="queue.title">Queue</span> <span id="queue-count" class="count-badge">0</span></h2>
         <div class="section-actions">
-          <button id="remove-selected-btn" class="btn ghost small hidden">Remove selected</button>
-          <button id="clear-queue-btn" class="btn ghost small">Clear all</button>
-          <button id="stop-btn" class="btn danger small hidden">Stop downloading</button>
-          <button id="start-btn" class="btn success" disabled>Start downloading</button>
+          <button id="remove-selected-btn" class="btn ghost small hidden" data-i18n="queue.remove_selected">Remove selected</button>
+          <button id="clear-queue-btn" class="btn ghost small" data-i18n="queue.clear_all">Clear all</button>
+          <button id="stop-btn" class="btn danger small hidden" data-i18n="queue.stop">Stop downloading</button>
+          <button id="start-btn" class="btn success" disabled data-i18n="queue.start">Start downloading</button>
         </div>
       </div>
       <div id="queue-grid" class="card-grid"></div>
-      <p id="queue-empty" class="muted small">Nothing queued yet — paste a URL above to get started.</p>
+      <p id="queue-empty" class="muted small" data-i18n="queue.empty">Nothing queued yet — paste a URL above to get started.</p>
 
       <div id="activity-section" class="hidden">
         <div class="section-head">
-          <h2>Now downloading</h2>
+          <h2 data-i18n="activity.title">Now downloading</h2>
           <div id="run-stats">
-            <span class="stat ok"><b id="stat-downloaded">0</b> downloaded</span>
-            <span class="stat warn"><b id="stat-skipped">0</b> skipped</span>
-            <span class="stat err"><b id="stat-failed">0</b> failed</span>
+            <span class="stat ok"><b id="stat-downloaded">0</b> <span data-i18n="activity.downloaded">downloaded</span></span>
+            <span class="stat warn"><b id="stat-skipped">0</b> <span data-i18n="activity.skipped">skipped</span></span>
+            <span class="stat err"><b id="stat-failed">0</b> <span data-i18n="activity.failed">failed</span></span>
           </div>
         </div>
         <div id="stats-bar"><div id="stats-bar-ok"></div><div id="stats-bar-warn"></div><div id="stats-bar-err"></div></div>
-        <button id="retry-failed-btn" class="btn ghost small hidden">Retry failed</button>
+        <button id="retry-failed-btn" class="btn ghost small hidden" data-i18n="activity.retry_failed">Retry failed</button>
         <div id="activity-grid" class="card-grid"></div>
       </div>
 
@@ -172,99 +176,99 @@
   <div id="wizard-modal" class="modal-backdrop hidden">
     <div class="modal">
       <div class="modal-head">
-        <h2 id="wizard-title">Scanning…</h2>
-        <button class="icon-btn wizard-close" title="Cancel">&times;</button>
+        <h2 id="wizard-title" data-i18n="wizard.scanning">Scanning…</h2>
+        <button class="icon-btn wizard-close" data-i18n-title="wizard.cancel" title="Cancel">&times;</button>
       </div>
       <div id="wizard-scope" class="modal-body">
         <p class="muted" id="wizard-scope-name"></p>
-        <p class="muted small" id="wizard-scope-size">Checking size…</p>
+        <p class="muted small" id="wizard-scope-size" data-i18n="wizard.checking_size">Checking size…</p>
         <div id="wizard-scope-warning" class="error-text hidden"></div>
         <label class="field checkbox hidden" id="wizard-scope-confirm-row">
           <input type="checkbox" id="wizard-scope-confirm-checkbox">
-          I understand this is a large catalogue and want to queue all of it anyway
+          <span data-i18n="wizard.confirm_large">I understand this is a large catalogue and want to queue all of it anyway</span>
         </label>
         <div class="modal-actions" style="justify-content:flex-start;flex-direction:column;align-items:stretch;gap:10px;">
-          <button id="wizard-scope-filterlive-btn" class="btn success">Filter by BPM / genre / artist</button>
-          <button id="wizard-scope-browse-btn" class="btn ghost">Browse &amp; pick individual releases</button>
-          <button id="wizard-scope-filter-btn" class="btn ghost">Filter by genre facets (full scan)</button>
-          <button id="wizard-scope-all-btn" class="btn ghost">Queue everything now</button>
+          <button id="wizard-scope-filterlive-btn" class="btn success" data-i18n="wizard.filter_live">Filter by BPM / genre / artist</button>
+          <button id="wizard-scope-browse-btn" class="btn ghost" data-i18n="wizard.browse_pick">Browse &amp; pick individual releases</button>
+          <button id="wizard-scope-filter-btn" class="btn ghost" data-i18n="wizard.filter_facets">Filter by genre facets (full scan)</button>
+          <button id="wizard-scope-all-btn" class="btn ghost" data-i18n="wizard.queue_all">Queue everything now</button>
         </div>
       </div>
       <div id="wizard-filter" class="modal-body hidden">
         <div class="filter-controls">
-          <div class="field narrow"><label>BPM min</label><input id="filter-bpm-min" type="number" min="0" max="400" placeholder="any"></div>
-          <div class="field narrow"><label>BPM max</label><input id="filter-bpm-max" type="number" min="0" max="400" placeholder="any"></div>
-          <div class="field"><label>Genre</label><select id="filter-genre"><option value="">Any genre</option></select></div>
-          <div class="field"><label>Sub-genre</label><select id="filter-subgenre"><option value="">Any sub-genre</option></select></div>
-          <button id="filter-apply-btn" class="btn primary">Apply</button>
+          <div class="field narrow"><label data-i18n="filter.bpm_min">BPM min</label><input id="filter-bpm-min" type="number" min="0" max="400" data-i18n-placeholder="filter.any" placeholder="any"></div>
+          <div class="field narrow"><label data-i18n="filter.bpm_max">BPM max</label><input id="filter-bpm-max" type="number" min="0" max="400" data-i18n-placeholder="filter.any" placeholder="any"></div>
+          <div class="field"><label data-i18n="filter.genre">Genre</label><select id="filter-genre"><option value="" data-i18n="filter.any_genre">Any genre</option></select></div>
+          <div class="field"><label data-i18n="filter.subgenre">Sub-genre</label><select id="filter-subgenre"><option value="" data-i18n="filter.any_subgenre">Any sub-genre</option></select></div>
+          <button id="filter-apply-btn" class="btn primary" data-i18n="filter.apply">Apply</button>
         </div>
         <div id="filter-artists-wrap" class="hidden">
-          <h3 class="filter-h">Artists <span class="muted small">— tap to narrow</span></h3>
+          <h3 class="filter-h"><span data-i18n="filter.artists">Artists</span> <span class="muted small" data-i18n="filter.tap_narrow">— tap to narrow</span></h3>
           <div id="filter-artists" class="chip-list"></div>
         </div>
         <div class="wizard-browse-head">
-          <p class="muted small" id="filter-status">Set BPM and/or genre, then Apply.</p>
+          <p class="muted small" id="filter-status" data-i18n="filter.prompt">Set BPM and/or genre, then Apply.</p>
           <span class="muted small" id="filter-selcount">0 selected</span>
         </div>
         <div id="filter-grid" class="browse-grid"></div>
         <div class="wizard-browse-foot">
           <div class="browse-pager">
-            <button id="filter-prev" class="btn ghost small" disabled>&larr; Prev</button>
+            <button id="filter-prev" class="btn ghost small" disabled data-i18n="browse.prev">&larr; Prev</button>
             <span class="muted small" id="filter-page"></span>
-            <button id="filter-next" class="btn ghost small" disabled>Next &rarr;</button>
-            <label class="muted small selpage"><input type="checkbox" id="filter-selectall"> select page</label>
+            <button id="filter-next" class="btn ghost small" disabled data-i18n="browse.next">Next &rarr;</button>
+            <label class="muted small selpage"><input type="checkbox" id="filter-selectall"> <span data-i18n="browse.select_page">select page</span></label>
           </div>
-          <button id="filter-add" class="btn success" disabled>Add selected to queue</button>
+          <button id="filter-add" class="btn success" disabled data-i18n="browse.add_selected">Add selected to queue</button>
         </div>
       </div>
       <div id="wizard-browse" class="modal-body hidden">
         <div class="wizard-browse-head">
-          <p class="muted small" id="wizard-browse-status">Loading…</p>
+          <p class="muted small" id="wizard-browse-status" data-i18n="browse.loading">Loading…</p>
           <span class="muted small" id="wizard-browse-selcount">0 selected</span>
         </div>
         <div id="wizard-browse-grid" class="browse-grid"></div>
         <div class="wizard-browse-foot">
           <div class="browse-pager">
-            <button id="wizard-browse-prev" class="btn ghost small" disabled>&larr; Prev</button>
+            <button id="wizard-browse-prev" class="btn ghost small" disabled data-i18n="browse.prev">&larr; Prev</button>
             <span class="muted small" id="wizard-browse-page"></span>
-            <button id="wizard-browse-next" class="btn ghost small" disabled>Next &rarr;</button>
+            <button id="wizard-browse-next" class="btn ghost small" disabled data-i18n="browse.next">Next &rarr;</button>
           </div>
-          <button id="wizard-browse-add" class="btn success" disabled>Add selected to queue</button>
+          <button id="wizard-browse-add" class="btn success" disabled data-i18n="browse.add_selected">Add selected to queue</button>
         </div>
       </div>
       <div id="wizard-scanning" class="modal-body hidden">
         <div class="spinner big"></div>
-        <p id="wizard-scan-status" class="muted">Starting scan…</p>
+        <p id="wizard-scan-status" class="muted" data-i18n="wizard.scan_starting">Starting scan…</p>
       </div>
       <div id="wizard-results" class="modal-body hidden">
         <p class="muted small" id="wizard-summary"></p>
         <div class="wizard-columns">
           <div class="wizard-col">
-            <h3>Genres</h3>
+            <h3 data-i18n="wizard.genres">Genres</h3>
             <div id="wizard-genres" class="chip-list"></div>
           </div>
           <div class="wizard-col">
-            <h3>Subgenres</h3>
+            <h3 data-i18n="wizard.subgenres">Subgenres</h3>
             <div id="wizard-subgenres" class="chip-list"></div>
           </div>
           <div class="wizard-col">
-            <h3>Top artists</h3>
+            <h3 data-i18n="wizard.top_artists">Top artists</h3>
             <div id="wizard-artists" class="chip-list"></div>
           </div>
         </div>
         <div class="wizard-dates">
           <div class="field">
-            <label>Published from</label>
+            <label data-i18n="wizard.published_from">Published from</label>
             <input id="wizard-date-from" type="date">
           </div>
           <div class="field">
-            <label>Published to</label>
+            <label data-i18n="wizard.published_to">Published to</label>
             <input id="wizard-date-to" type="date">
           </div>
         </div>
         <div class="modal-actions">
-          <button id="wizard-bypass-btn" class="btn ghost">Queue everything (no filter)</button>
-          <button id="wizard-confirm-btn" class="btn success">Queue with filters</button>
+          <button id="wizard-bypass-btn" class="btn ghost" data-i18n="wizard.queue_nofilter">Queue everything (no filter)</button>
+          <button id="wizard-confirm-btn" class="btn success" data-i18n="wizard.queue_filters">Queue with filters</button>
         </div>
       </div>
     </div>
@@ -274,13 +278,13 @@
   <div id="search-modal" class="modal-backdrop hidden">
     <div class="modal">
       <div class="modal-head">
-        <h2>Search results</h2>
-        <button class="icon-btn search-close" title="Close">&times;</button>
+        <h2 data-i18n="search.title">Search results</h2>
+        <button class="icon-btn search-close" data-i18n-title="settings.close" title="Close">&times;</button>
       </div>
       <div class="modal-body">
         <div id="search-results-grid" class="card-grid selectable"></div>
         <div class="modal-actions">
-          <button id="search-add-btn" class="btn success">Add selected</button>
+          <button id="search-add-btn" class="btn success" data-i18n="search.add_selected">Add selected</button>
         </div>
       </div>
     </div>
@@ -290,99 +294,99 @@
   <div id="settings-modal" class="modal-backdrop hidden">
     <div class="modal wide">
       <div class="modal-head">
-        <h2>Settings</h2>
-        <button class="icon-btn settings-close" title="Close">&times;</button>
+        <h2 data-i18n="settings.title">Settings</h2>
+        <button class="icon-btn settings-close" data-i18n-title="settings.close" title="Close">&times;</button>
       </div>
       <div class="modal-body">
         <form id="settings-form" class="settings-form grid">
-          <div class="field"><label>Username</label><input name="username" type="text"></div>
-          <div class="field"><label>Password</label><input name="password" type="password"></div>
-          <div class="field"><label>Downloads directory</label><input name="downloads_directory" type="text"></div>
+          <div class="field"><label data-i18n="field.username">Username</label><input name="username" type="text"></div>
+          <div class="field"><label data-i18n="field.password">Password</label><input name="password" type="password"></div>
+          <div class="field"><label data-i18n="field.downloads_dir">Downloads directory</label><input name="downloads_directory" type="text"></div>
           <div class="field">
-            <label>Quality</label>
+            <label data-i18n="field.quality">Quality</label>
             <select name="quality">
-              <option value="lossless">Lossless (FLAC)</option>
-              <option value="high">High (AAC 256kbps)</option>
-              <option value="medium">Medium (AAC 128kbps)</option>
+              <option value="lossless" data-i18n="quality.lossless">Lossless (FLAC)</option>
+              <option value="high" data-i18n="quality.high">High (AAC 256kbps)</option>
+              <option value="medium" data-i18n="quality.medium">Medium (AAC 128kbps)</option>
             </select>
           </div>
-          <div class="field"><label>Global workers</label><input name="max_global_workers" type="number" min="1" max="50"></div>
-          <div class="field"><label>Download workers</label><input name="max_download_workers" type="number" min="1" max="50"></div>
+          <div class="field"><label data-i18n="settings.global_workers">Global workers</label><input name="max_global_workers" type="number" min="1" max="50"></div>
+          <div class="field"><label data-i18n="settings.download_workers">Download workers</label><input name="max_download_workers" type="number" min="1" max="50"></div>
           <div class="field">
-            <label>If track exists</label>
+            <label data-i18n="settings.track_exists">If track exists</label>
             <select name="track_exists">
-              <option value="update">Update tags</option>
-              <option value="skip">Skip</option>
-              <option value="overwrite">Overwrite</option>
-              <option value="error">Error</option>
+              <option value="update" data-i18n="settings.exists_update">Update tags</option>
+              <option value="skip" data-i18n="settings.exists_skip">Skip</option>
+              <option value="overwrite" data-i18n="settings.exists_overwrite">Overwrite</option>
+              <option value="error" data-i18n="settings.exists_error">Error</option>
             </select>
           </div>
-          <div class="field"><label>Track number padding</label><input name="track_number_padding" type="number" min="0" max="10"></div>
-          <div class="field checkbox"><label><input name="sort_by_context" type="checkbox"> Sort into folders by label/release/artist</label></div>
-          <div class="field checkbox"><label><input name="sort_by_label" type="checkbox"> Group releases under label folders</label></div>
-          <div class="field checkbox"><label><input name="force_release_directories" type="checkbox"> Force per-release folders in playlists/charts</label></div>
-          <div class="field checkbox"><label><input name="fix_tags" type="checkbox"> Fix/normalize tags after download</label></div>
-          <div class="field checkbox"><label><input name="keep_cover" type="checkbox"> Keep cover.jpg in release folders</label></div>
-          <div class="field checkbox"><label><input name="skip_previously_downloaded" type="checkbox"> Skip tracks already downloaded before</label></div>
-          <div class="field"><label>Release folder template</label><input name="release_directory_template" type="text"></div>
-          <div class="field"><label>Label folder template</label><input name="label_directory_template" type="text"></div>
-          <div class="field"><label>Artist folder template</label><input name="artist_directory_template" type="text"></div>
-          <div class="field"><label>Playlist folder template</label><input name="playlist_directory_template" type="text"></div>
-          <div class="field"><label>Chart folder template</label><input name="chart_directory_template" type="text"></div>
-          <div class="field"><label>Track filename template</label><input name="track_file_template" type="text"></div>
-          <div class="field"><label>Artists limit</label><input name="artists_limit" type="number" min="0" max="20"></div>
-          <div class="field"><label>Various-artists label</label><input name="artists_short_form" type="text"></div>
+          <div class="field"><label data-i18n="settings.padding">Track number padding</label><input name="track_number_padding" type="number" min="0" max="10"></div>
+          <div class="field checkbox"><label><input name="sort_by_context" type="checkbox"> <span data-i18n="settings.sort_by_context">Sort into folders by label/release/artist</span></label></div>
+          <div class="field checkbox"><label><input name="sort_by_label" type="checkbox"> <span data-i18n="settings.sort_by_label">Group releases under label folders</span></label></div>
+          <div class="field checkbox"><label><input name="force_release_directories" type="checkbox"> <span data-i18n="settings.force_release_dirs">Force per-release folders in playlists/charts</span></label></div>
+          <div class="field checkbox"><label><input name="fix_tags" type="checkbox"> <span data-i18n="settings.fix_tags">Fix/normalize tags after download</span></label></div>
+          <div class="field checkbox"><label><input name="keep_cover" type="checkbox"> <span data-i18n="settings.keep_cover">Keep cover.jpg in release folders</span></label></div>
+          <div class="field checkbox"><label><input name="skip_previously_downloaded" type="checkbox"> <span data-i18n="settings.skip_downloaded">Skip tracks already downloaded before</span></label></div>
+          <div class="field"><label data-i18n="settings.tpl_release">Release folder template</label><input name="release_directory_template" type="text"></div>
+          <div class="field"><label data-i18n="settings.tpl_label">Label folder template</label><input name="label_directory_template" type="text"></div>
+          <div class="field"><label data-i18n="settings.tpl_artist">Artist folder template</label><input name="artist_directory_template" type="text"></div>
+          <div class="field"><label data-i18n="settings.tpl_playlist">Playlist folder template</label><input name="playlist_directory_template" type="text"></div>
+          <div class="field"><label data-i18n="settings.tpl_chart">Chart folder template</label><input name="chart_directory_template" type="text"></div>
+          <div class="field"><label data-i18n="settings.tpl_track">Track filename template</label><input name="track_file_template" type="text"></div>
+          <div class="field"><label data-i18n="settings.artists_limit">Artists limit</label><input name="artists_limit" type="number" min="0" max="20"></div>
+          <div class="field"><label data-i18n="settings.artists_short">Various-artists label</label><input name="artists_short_form" type="text"></div>
           <div class="field">
-            <label>Key display</label>
+            <label data-i18n="settings.key_system">Key display</label>
             <select name="key_system">
-              <option value="standard-short">Standard (short)</option>
-              <option value="standard">Standard</option>
-              <option value="openkey">Open Key</option>
-              <option value="camelot">Camelot</option>
+              <option value="standard-short" data-i18n="settings.key_standard_short">Standard (short)</option>
+              <option value="standard" data-i18n="settings.key_standard">Standard</option>
+              <option value="openkey" data-i18n="settings.key_openkey">Open Key</option>
+              <option value="camelot" data-i18n="settings.key_camelot">Camelot</option>
             </select>
           </div>
-          <div class="field"><label>Cover size</label><input name="cover_size" type="text"></div>
-          <div class="field"><label>Proxy (optional)</label><input name="proxy" type="text"></div>
-          <div class="field"><label>Watch check interval (hours)</label><input name="watch_interval_hours" type="number" min="1" max="168"></div>
-          <div class="field"><label>Watch staging folder (optional)</label><input name="watch_downloads_directory" type="text" placeholder="blank = normal downloads folder"><small>Where watch-list auto-downloads land, one subfolder per label, so unattended grabs stay out of the library until you file them.</small></div>
-          <div class="field"><label>Watch lookback (days)</label><input name="watch_lookback_days" type="number" min="0" max="365"><small>How far back before each label's watermark to re-check, in case Beatport lists something late.</small></div>
-          <div class="field"><label>Notification webhook URL (optional)</label><input name="notify_webhook_url" type="text" placeholder="https://discord.com/api/webhooks/..."></div>
+          <div class="field"><label data-i18n="settings.cover_size">Cover size</label><input name="cover_size" type="text"></div>
+          <div class="field"><label data-i18n="settings.proxy">Proxy (optional)</label><input name="proxy" type="text"></div>
+          <div class="field"><label data-i18n="settings.watch_interval">Watch check interval (hours)</label><input name="watch_interval_hours" type="number" min="1" max="168"></div>
+          <div class="field"><label data-i18n="settings.watch_dir">Watch staging folder (optional)</label><input name="watch_downloads_directory" type="text" data-i18n-placeholder="settings.watch_dir_ph" placeholder="blank = normal downloads folder"><small data-i18n="settings.watch_dir_help">Where watch-list auto-downloads land, one subfolder per label, so unattended grabs stay out of the library until you file them.</small></div>
+          <div class="field"><label data-i18n="settings.watch_lookback">Watch lookback (days)</label><input name="watch_lookback_days" type="number" min="0" max="365"><small data-i18n="settings.watch_lookback_help">How far back before each label's watermark to re-check, in case Beatport lists something late.</small></div>
+          <div class="field"><label data-i18n="settings.webhook">Notification webhook URL (optional)</label><input name="notify_webhook_url" type="text" placeholder="https://discord.com/api/webhooks/..."></div>
         </form>
         <p id="settings-error" class="error-text hidden"></p>
         <div class="modal-actions">
-          <button id="settings-save-btn" class="btn success">Save settings</button>
+          <button id="settings-save-btn" class="btn success" data-i18n="settings.save">Save settings</button>
         </div>
 
         <div class="maintenance-section">
-          <h3>Library maintenance</h3>
+          <h3 data-i18n="maint.title">Library maintenance</h3>
           <label class="field checkbox">
             <input id="art-only-missing" type="checkbox" checked>
-            Only fix tracks missing art (uncheck to refresh every cover)
+            <span data-i18n="maint.art_only_missing">Only fix tracks missing art (uncheck to refresh every cover)</span>
           </label>
           <div class="modal-actions" style="justify-content:flex-start;margin-top:10px;">
-            <button id="recheck-art-btn" class="btn ghost">Recheck downloaded album &amp; track art</button>
+            <button id="recheck-art-btn" class="btn ghost" data-i18n="maint.recheck_art">Recheck downloaded album &amp; track art</button>
           </div>
           <p id="art-recheck-status" class="muted small"></p>
         </div>
 
         <div class="maintenance-section">
-          <h3>Download history</h3>
-          <p class="muted small">
+          <h3 data-i18n="history.title">Download history</h3>
+          <p class="muted small" data-i18n="history.blurb">
             "Verify library" checks whether each downloaded track's file still exists where it was
             saved. If you move files elsewhere afterwards, missing entries here are expected and
             fine — that's what keeps already-downloaded tracks from being re-downloaded. Only use
             "Remove missing entries" if you keep files in place and want to clean up genuinely lost ones.
           </p>
           <div class="modal-actions" style="justify-content:flex-start;gap:10px;">
-            <button id="verify-library-btn" class="btn ghost">Verify library</button>
-            <button id="remove-missing-btn" class="btn ghost hidden">Remove missing entries</button>
+            <button id="verify-library-btn" class="btn ghost" data-i18n="history.verify">Verify library</button>
+            <button id="remove-missing-btn" class="btn ghost hidden" data-i18n="history.remove_missing">Remove missing entries</button>
           </div>
           <p id="verify-library-status" class="muted small"></p>
 
           <div class="modal-actions" style="justify-content:flex-start;margin-top:16px;">
-            <button id="clear-history-btn" class="btn danger">Clear download history</button>
+            <button id="clear-history-btn" class="btn danger" data-i18n="history.clear">Clear download history</button>
           </div>
-          <p class="muted small">Wipes the entire history/dedup database. Use this after moving a
+          <p class="muted small" data-i18n="history.clear_blurb">Wipes the entire history/dedup database. Use this after moving a
             batch of downloads elsewhere if you want a clean slate — future downloads won't be
             treated as duplicates of anything recorded before the clear.</p>
         </div>
@@ -395,63 +399,63 @@
   <div id="stats-modal" class="modal-backdrop hidden">
     <div class="modal wide">
       <div class="modal-head">
-        <h2>Library stats</h2>
-        <button class="icon-btn stats-close" title="Close">&times;</button>
+        <h2 data-i18n="stats.title">Library stats</h2>
+        <button class="icon-btn stats-close" data-i18n-title="settings.close" title="Close">&times;</button>
       </div>
       <div class="modal-body">
         <div id="stats-range" class="tab-row stats-range">
-          <button class="btn ghost small stats-range-btn selected" data-days="">All time</button>
-          <button class="btn ghost small stats-range-btn" data-days="90">90 days</button>
-          <button class="btn ghost small stats-range-btn" data-days="30">30 days</button>
-          <button class="btn ghost small stats-range-btn" data-days="7">7 days</button>
+          <button class="btn ghost small stats-range-btn selected" data-days="" data-i18n="stats.all_time">All time</button>
+          <button class="btn ghost small stats-range-btn" data-days="90" data-i18n="stats.90d">90 days</button>
+          <button class="btn ghost small stats-range-btn" data-days="30" data-i18n="stats.30d">30 days</button>
+          <button class="btn ghost small stats-range-btn" data-days="7" data-i18n="stats.7d">7 days</button>
         </div>
 
         <div id="stats-tiles" class="stats-tiles"></div>
 
-        <h3>Tracks per day</h3>
+        <h3 data-i18n="stats.per_day">Tracks per day</h3>
         <div id="stats-daily" class="col-chart"></div>
 
         <div class="stats-columns">
           <div class="stats-col">
-            <h3>Top genres</h3>
+            <h3 data-i18n="stats.top_genres">Top genres</h3>
             <div id="stats-genres" class="hbar-chart"></div>
           </div>
           <div class="stats-col">
-            <h3>Top artists</h3>
+            <h3 data-i18n="stats.top_artists">Top artists</h3>
             <div id="stats-artists" class="hbar-chart"></div>
           </div>
           <div class="stats-col">
-            <h3>Top labels</h3>
+            <h3 data-i18n="stats.top_labels">Top labels</h3>
             <div id="stats-labels" class="hbar-chart"></div>
           </div>
         </div>
 
         <div class="stats-columns two">
           <div class="stats-col">
-            <h3>Top sub-genres</h3>
+            <h3 data-i18n="stats.top_subgenres">Top sub-genres</h3>
             <div id="stats-subgenres" class="hbar-chart"></div>
           </div>
           <div class="stats-col">
-            <h3>Failed downloads — why</h3>
+            <h3 data-i18n="stats.failures">Failed downloads — why</h3>
             <div id="stats-failures" class="hbar-chart"></div>
           </div>
         </div>
 
         <div class="stats-columns two">
           <div class="stats-col">
-            <h3>BPM distribution</h3>
+            <h3 data-i18n="stats.bpm">BPM distribution</h3>
             <div id="stats-bpm" class="col-chart"></div>
           </div>
           <div class="stats-col">
-            <h3>Key distribution</h3>
+            <h3 data-i18n="stats.keys">Key distribution</h3>
             <div id="stats-keys" class="col-chart"></div>
           </div>
         </div>
 
-        <h3>Tracks downloaded per month</h3>
+        <h3 data-i18n="stats.per_month">Tracks downloaded per month</h3>
         <div id="stats-activity" class="col-chart"></div>
 
-        <h3>Data downloaded per month</h3>
+        <h3 data-i18n="stats.volume_per_month">Data downloaded per month</h3>
         <div id="stats-volume" class="col-chart"></div>
       </div>
     </div>
@@ -460,6 +464,7 @@
   <div id="toast" class="toast hidden"></div>
 
 </div>
+<script src="/static/i18n.js"></script>
 <script src="/static/app.js"></script>
 </body>
 </html>

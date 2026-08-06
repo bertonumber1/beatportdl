@@ -1,0 +1,988 @@
+"use strict";
+
+/* Translations for the web UI.
+ *
+ * Markup carries `data-i18n` (text), `data-i18n-placeholder` and `data-i18n-title`;
+ * everything the scripts write at runtime goes through t(). Keys are dotted and
+ * grouped by the panel they belong to, so a missing one is obvious in review.
+ *
+ * Interpolation is `{name}`. Counts keep the app's existing "(s)" style rather than
+ * real plural rules — the English copy already reads "item(s)", and matching that is
+ * both consistent and far less to get wrong across three languages.
+ *
+ * English is the fallback for any key a translation has not defined yet, so shipping
+ * a partial translation degrades to English instead of printing a raw key.
+ */
+
+const I18N = {
+  en: {
+    "lang.name": "English",
+
+    "hero.tagline": "Beatport / Beatsource downloader",
+
+    "top.starting": "Starting…",
+    "top.stats": "Stats",
+    "top.settings": "Settings",
+    "top.language": "Language",
+
+    "conn.setup_needed": "Setup needed",
+    "conn.connected": "Connected",
+    "conn.failed": "Connection failed",
+    "conn.connecting": "Connecting…",
+
+    "setup.title": "Let's get set up",
+    "setup.blurb": "A few required settings before BP-DL can talk to Beatport / Beatsource.",
+    "setup.submit": "Save & connect",
+
+    "connecting.text": "Connecting to Beatport…",
+    "connecting.error": "Couldn't connect: {error}",
+    "connecting.retry": "Retry connection",
+
+    "field.username": "Username",
+    "field.password": "Password",
+    "field.downloads_dir": "Downloads directory",
+    "field.quality": "Quality",
+    "quality.lossless": "Lossless (FLAC)",
+    "quality.high": "High (AAC 256kbps)",
+    "quality.medium": "Medium (AAC 128kbps)",
+
+    "input.placeholder": "Paste a label / artist / track / release URL, or type a search query…",
+    "input.add": "Add",
+    "input.working": "Working…",
+    "input.added": "Added \"{name}\".",
+
+    "watch.title": "Release watch",
+    "watch.check_now": "Check now",
+    "watch.blurb": "Watched labels get every new release grabbed automatically; watched artists get their new tracks. Check interval lives in Settings.",
+    "watch.placeholder": "Paste a label or artist URL to watch…",
+    "watch.add": "Watch",
+    "watch.empty": "Not watching any labels or artists yet — paste one above and every new release lands automatically.",
+    "watch.watching": "Watching.",
+    "watch.checking_now": "Checking now…",
+    "watch.checking_n": "Checking {count} watched item(s)...",
+    "watch.failed": "Failed: {error}",
+    "watch.found": "Found {releases} new release(s), {tracks} track(s) downloaded.{pending}",
+    "watch.found_toast": "Watch check: {releases} new release(s) downloaded.",
+    "watch.none_found": "No new releases found.{pending}",
+    "watch.full_downloaded": "{name}: full catalogue downloaded, tracked from {through}. ",
+    "watch.update_failed": "{name}: update failed — {error}",
+    "watch.new_downloaded": "{name}: {releases} new release(s) downloaded.",
+    "watch.up_to_date": "{name}: already up to date.{note}",
+    "watch.up_to_date_toast": "{name} is already up to date.",
+    "watch.rescan_title": "Re-examine releases already marked as seen. Needed when widening the range backwards.",
+    "watch.update_latest": "Update to latest",
+    "watch.update_latest_title": "Grab everything Beatport has published since {through}",
+    "watch.saving": "Saving…",
+    "watch.updating": "Updating…",
+    "watch.range_failed": "Could not save range: {error}",
+    "watch.since": "Checking for releases published since {since}…",
+    "watch.update_error": "Update failed: {error}",
+
+    "explore.title": "Explore",
+    "explore.browse": "Browse Beatport ▾",
+    "explore.hide": "Hide ▴",
+    "explore.genre": "Genre",
+    "explore.all_genres": "All genres (Beatport Top 100)",
+    "explore.show": "Show",
+    "explore.top100": "Top 100",
+    "explore.new_tracks": "New tracks",
+    "explore.new_releases": "New releases",
+    "explore.dj_charts": "DJ charts",
+
+    "queue.title": "Queue",
+    "queue.remove_selected": "Remove selected",
+    "queue.remove_n": "Remove {count} selected",
+    "queue.clear_all": "Clear all",
+    "queue.stop": "Stop downloading",
+    "queue.start": "Start downloading",
+    "queue.empty": "Nothing queued yet — paste a URL above to get started.",
+    "queue.remove": "Remove",
+    "queue.choose_filters": "Choose filters",
+    "queue.edit_filters": "Edit filters",
+    "queue.filtered": " · filtered",
+    "queue.needs_filters": " · needs filters",
+    "queue.unfiltered": " · unfiltered",
+    "queue.remove_failed": "Failed to remove: {error}",
+    "queue.removed_n": "Removed {count} item(s) from the queue.",
+    "queue.clear_failed": "Failed to clear queue: {error}",
+
+    "activity.title": "Now downloading",
+    "activity.downloaded": "downloaded",
+    "activity.skipped": "skipped",
+    "activity.failed": "failed",
+    "activity.retry_failed": "Retry failed",
+    "activity.retry_n": "Retry {count} failed",
+    "activity.starting": "Starting \"{name}\"…",
+    "activity.stopped": "Stopped — {downloaded} downloaded, {skipped} skipped before stopping.",
+    "activity.finished": "Finished — {downloaded} downloaded, {skipped} skipped, {failed} failed.",
+    "activity.stopping": "Stopping — finishing the current track, no new ones will start…",
+    "activity.requeue_failed": "Failed to re-queue \"{name}\": {error}",
+    "activity.requeued": "Re-queued {count} failed track(s) — press Start downloading when ready.",
+
+    "preview.play": "Play preview",
+
+    "search.title": "Search results",
+    "search.add_selected": "Add selected",
+    "search.none": "No results found.",
+    "search.add_failed": "Failed to add \"{name}\": {error}",
+    "search.added_n": "Added {count} item(s) to queue.",
+
+    "wizard.scanning": "Scanning…",
+    "wizard.what_queue": "What do you want to queue?",
+    "wizard.scope_name": "\"{name}\" — browse and pick individual releases, filter the catalogue, or queue the whole thing.",
+    "wizard.checking_size": "Checking size…",
+    "wizard.catalogue_count": "{count} {kind} in this catalogue.",
+    "wizard.large_warning": "That's a large catalogue ({count} {kind}) — queuing everything unfiltered will use significant time, bandwidth, and storage.",
+    "wizard.confirm_large": "I understand this is a large catalogue and want to queue all of it anyway",
+    "wizard.filter_live": "Filter by BPM / genre / artist",
+    "wizard.browse_pick": "Browse & pick individual releases",
+    "wizard.filter_facets": "Filter by genre facets (full scan)",
+    "wizard.queue_all": "Queue everything now",
+    "wizard.scan_starting": "Starting scan — this can take a while for large catalogues…",
+    "wizard.scan_failed": "Scan failed: {error}",
+    "wizard.filter_title": "Filter this catalogue",
+    "wizard.summary": "{total} tracks scanned{bpm}. Select genres/subgenres/artists to keep — leave empty for \"all\".",
+    "wizard.browse_title": "Browse & pick releases",
+    "wizard.browse_failed": "Failed to load: {error}",
+    "wizard.add_one_failed": "Failed to add one release: {error}",
+    "wizard.added_releases": "Added {count} release(s) to the queue.",
+    "wizard.genres": "Genres",
+    "wizard.subgenres": "Subgenres",
+    "wizard.top_artists": "Top artists",
+    "wizard.published_from": "Published from",
+    "wizard.published_to": "Published to",
+    "wizard.queue_nofilter": "Queue everything (no filter)",
+    "wizard.queue_filters": "Queue with filters",
+    "wizard.cancel": "Cancel",
+
+    "filter.bpm_min": "BPM min",
+    "filter.bpm_max": "BPM max",
+    "filter.any": "any",
+    "filter.genre": "Genre",
+    "filter.any_genre": "Any genre",
+    "filter.subgenre": "Sub-genre",
+    "filter.any_subgenre": "Any sub-genre",
+    "filter.apply": "Apply",
+    "filter.artists": "Artists",
+    "filter.tap_narrow": "— tap to narrow",
+    "filter.prompt": "Set BPM and/or genre, then Apply.",
+    "filter.filtering": "Filtering…",
+    "filter.matching": "{count} matching track(s).",
+    "filter.failed": "Filter failed: {error}",
+    "filter.add_track_failed": "Failed to add a track: {error}",
+    "filter.added_tracks": "Added {count} track(s) to the queue.",
+
+    "browse.loading": "Loading…",
+    "browse.selected": "{count} selected",
+    "browse.prev": "← Prev",
+    "browse.next": "Next →",
+    "browse.select_page": "select page",
+    "browse.add_selected": "Add selected to queue",
+    "browse.add_n": "Add {count} to queue",
+    "browse.page": "Page {page}",
+    "browse.page_lower": "page {page}",
+    "browse.nothing": "Nothing yet.",
+    "browse.add_failed": "Failed to add \"{name}\": {error}",
+    "browse.added_items": "Added {count} item(s) to queue — press Start downloading when ready.",
+
+    "settings.title": "Settings",
+    "settings.close": "Close",
+    "settings.save": "Save settings",
+    "settings.saved": "Settings saved.",
+    "settings.save_failed": "Failed to save: {error}",
+    "settings.global_workers": "Global workers",
+    "settings.download_workers": "Download workers",
+    "settings.track_exists": "If track exists",
+    "settings.exists_update": "Update tags",
+    "settings.exists_skip": "Skip",
+    "settings.exists_overwrite": "Overwrite",
+    "settings.exists_error": "Error",
+    "settings.padding": "Track number padding",
+    "settings.sort_by_context": "Sort into folders by label/release/artist",
+    "settings.sort_by_label": "Group releases under label folders",
+    "settings.force_release_dirs": "Force per-release folders in playlists/charts",
+    "settings.fix_tags": "Fix/normalize tags after download",
+    "settings.keep_cover": "Keep cover.jpg in release folders",
+    "settings.skip_downloaded": "Skip tracks already downloaded before",
+    "settings.tpl_release": "Release folder template",
+    "settings.tpl_label": "Label folder template",
+    "settings.tpl_artist": "Artist folder template",
+    "settings.tpl_playlist": "Playlist folder template",
+    "settings.tpl_chart": "Chart folder template",
+    "settings.tpl_track": "Track filename template",
+    "settings.artists_limit": "Artists limit",
+    "settings.artists_short": "Various-artists label",
+    "settings.key_system": "Key display",
+    "settings.key_standard_short": "Standard (short)",
+    "settings.key_standard": "Standard",
+    "settings.key_openkey": "Open Key",
+    "settings.key_camelot": "Camelot",
+    "settings.cover_size": "Cover size",
+    "settings.proxy": "Proxy (optional)",
+    "settings.watch_interval": "Watch check interval (hours)",
+    "settings.watch_dir": "Watch staging folder (optional)",
+    "settings.watch_dir_ph": "blank = normal downloads folder",
+    "settings.watch_dir_help": "Where watch-list auto-downloads land, one subfolder per label, so unattended grabs stay out of the library until you file them.",
+    "settings.watch_lookback": "Watch lookback (days)",
+    "settings.watch_lookback_help": "How far back before each label's watermark to re-check, in case Beatport lists something late.",
+    "settings.webhook": "Notification webhook URL (optional)",
+
+    "maint.title": "Library maintenance",
+    "maint.art_only_missing": "Only fix tracks missing art (uncheck to refresh every cover)",
+    "maint.recheck_art": "Recheck downloaded album & track art",
+    "maint.starting": "Starting…",
+    "maint.art_failed": "Failed: {error}",
+    "maint.art_failed_toast": "Art recheck failed: {error}",
+    "maint.art_done": "Art recheck complete — {count} file(s) fixed.",
+
+    "history.title": "Download history",
+    "history.blurb": "\"Verify library\" checks whether each downloaded track's file still exists where it was saved. If you move files elsewhere afterwards, missing entries here are expected and fine — that's what keeps already-downloaded tracks from being re-downloaded. Only use \"Remove missing entries\" if you keep files in place and want to clean up genuinely lost ones.",
+    "history.verify": "Verify library",
+    "history.checking": "Checking…",
+    "history.remove_missing": "Remove missing entries",
+    "history.remove_missing_n": "Remove {count} missing entries",
+    "history.removed": "Removed {count} entries.",
+    "history.clear": "Clear download history",
+    "history.clear_blurb": "Wipes the entire history/dedup database. Use this after moving a batch of downloads elsewhere if you want a clean slate — future downloads won't be treated as duplicates of anything recorded before the clear.",
+    "history.cleared": "Cleared {count} history entries.",
+
+    "stats.title": "Library stats",
+    "stats.all_time": "All time",
+    "stats.90d": "90 days",
+    "stats.30d": "30 days",
+    "stats.7d": "7 days",
+    "stats.per_day": "Tracks per day",
+    "stats.top_genres": "Top genres",
+    "stats.top_artists": "Top artists",
+    "stats.top_labels": "Top labels",
+    "stats.top_subgenres": "Top sub-genres",
+    "stats.failures": "Failed downloads — why",
+    "stats.bpm": "BPM distribution",
+    "stats.keys": "Key distribution",
+    "stats.per_month": "Tracks downloaded per month",
+    "stats.volume_per_month": "Data downloaded per month",
+    "stats.load_failed": "Failed to load stats: {error}",
+    "stats.tile_tracks": "Tracks",
+    "stats.tile_releases": "Releases",
+    "stats.tile_labels": "Labels",
+    "stats.tile_artists": "Artists",
+    "stats.tile_downloaded": "Downloaded",
+    "stats.tile_success": "Success rate",
+    "stats.tile_failed": "Failed",
+
+    "browse.tap_select": "{count} {kind} in this catalogue — tap to select the ones you want.",
+    "browse.showing_100": " Showing 100 per page.",
+
+    "watchsec.labels": "Labels",
+    "watchsec.artists": "Artists",
+    "watchsec.upcoming": "{count} upcoming {noun}: ",
+    "watchsec.noun_track": "track",
+    "watchsec.noun_tracks": "tracks",
+    "watchsec.noun_prerelease": "pre-release",
+    "watchsec.noun_prereleases": "pre-releases",
+    "watchsec.full_to": "full catalogue to {through}",
+    "watchsec.checked_to": "checked to {date}",
+    "watchsec.not_checked": "not checked yet",
+    "watchsec.from": "From",
+    "watchsec.to": "To",
+    "watchsec.rescan": "Re-check seen",
+    "watchsec.save_check": "Save & check now",
+    "watchsec.reopened": "{count} releases re-opened, ",
+    "watchsec.range_saved": "Range saved — {cleared}checking this label now.",
+    "watchsec.range_saved_busy": "Range saved, {cleared}but a check is already running; it runs on the next one.",
+    "watchsec.remove": "Stop watching",
+
+    "activity.art_done_full": "Done — {files} file(s) fixed across {fixed}/{checked} release(s). {ok} already had art, {noid} file(s) predate ID tagging, {failed} failed.",
+    "watch.pending_note": " {count} pre-release(s) spotted, will download once released.",
+    "watch.pending_note_short": " {count} pre-release(s) spotted.",
+    "watch.label_updated": "{name}: {releases} new release(s), {tracks} track(s) downloaded — now held to {through}.{note}",
+
+    "explore.in_top100": "in the Top 100",
+    "explore.n_tracks": "{count} track(s)",
+
+    "history.verify_summary": "{total} tracked — {ok} found on disk, {missing} missing, {nopath} predate file-path tracking.",
+    "history.confirm_remove": "Remove history entries for tracks whose files are gone? This can't be undone.",
+    "history.confirm_clear": "Wipe the entire download history? Dedup will no longer know about anything downloaded before this point. This can't be undone.",
+  },
+
+  es: {
+    "lang.name": "Español",
+
+    "hero.tagline": "Descargador de Beatport / Beatsource",
+
+    "top.starting": "Iniciando…",
+    "top.stats": "Estadísticas",
+    "top.settings": "Ajustes",
+    "top.language": "Idioma",
+
+    "conn.setup_needed": "Falta configurar",
+    "conn.connected": "Conectado",
+    "conn.failed": "Error de conexión",
+    "conn.connecting": "Conectando…",
+
+    "setup.title": "Vamos a configurarlo",
+    "setup.blurb": "Unos ajustes imprescindibles antes de que BP-DL pueda hablar con Beatport / Beatsource.",
+    "setup.submit": "Guardar y conectar",
+
+    "connecting.text": "Conectando con Beatport…",
+    "connecting.error": "No se pudo conectar: {error}",
+    "connecting.retry": "Reintentar conexión",
+
+    "field.username": "Usuario",
+    "field.password": "Contraseña",
+    "field.downloads_dir": "Carpeta de descargas",
+    "field.quality": "Calidad",
+    "quality.lossless": "Sin pérdida (FLAC)",
+    "quality.high": "Alta (AAC 256 kbps)",
+    "quality.medium": "Media (AAC 128 kbps)",
+
+    "input.placeholder": "Pega una URL de sello / artista / pista / lanzamiento, o escribe una búsqueda…",
+    "input.add": "Añadir",
+    "input.working": "Trabajando…",
+    "input.added": "Añadido \"{name}\".",
+
+    "watch.title": "Seguimiento de lanzamientos",
+    "watch.check_now": "Comprobar ahora",
+    "watch.blurb": "De los sellos seguidos se descarga automáticamente cada lanzamiento nuevo; de los artistas seguidos, sus pistas nuevas. El intervalo de comprobación está en Ajustes.",
+    "watch.placeholder": "Pega la URL de un sello o artista para seguirlo…",
+    "watch.add": "Seguir",
+    "watch.empty": "Aún no sigues ningún sello ni artista — pega uno arriba y cada lanzamiento nuevo llegará solo.",
+    "watch.watching": "Siguiendo.",
+    "watch.checking_now": "Comprobando ahora…",
+    "watch.checking_n": "Comprobando {count} elemento(s) seguido(s)...",
+    "watch.failed": "Error: {error}",
+    "watch.found": "Encontrado(s) {releases} lanzamiento(s) nuevo(s), {tracks} pista(s) descargada(s).{pending}",
+    "watch.found_toast": "Comprobación: {releases} lanzamiento(s) nuevo(s) descargado(s).",
+    "watch.none_found": "No se encontraron lanzamientos nuevos.{pending}",
+    "watch.full_downloaded": "{name}: catálogo completo descargado, seguimiento desde {through}. ",
+    "watch.update_failed": "{name}: fallo al actualizar — {error}",
+    "watch.new_downloaded": "{name}: {releases} lanzamiento(s) nuevo(s) descargado(s).",
+    "watch.up_to_date": "{name}: ya está al día.{note}",
+    "watch.up_to_date_toast": "{name} ya está al día.",
+    "watch.rescan_title": "Volver a examinar lanzamientos ya marcados como vistos. Necesario al ampliar el rango hacia atrás.",
+    "watch.update_latest": "Actualizar a lo último",
+    "watch.update_latest_title": "Coger todo lo que Beatport ha publicado desde {through}",
+    "watch.saving": "Guardando…",
+    "watch.updating": "Actualizando…",
+    "watch.range_failed": "No se pudo guardar el rango: {error}",
+    "watch.since": "Buscando lanzamientos publicados desde {since}…",
+    "watch.update_error": "Fallo al actualizar: {error}",
+
+    "explore.title": "Explorar",
+    "explore.browse": "Explorar Beatport ▾",
+    "explore.hide": "Ocultar ▴",
+    "explore.genre": "Género",
+    "explore.all_genres": "Todos los géneros (Top 100 de Beatport)",
+    "explore.show": "Mostrar",
+    "explore.top100": "Top 100",
+    "explore.new_tracks": "Pistas nuevas",
+    "explore.new_releases": "Lanzamientos nuevos",
+    "explore.dj_charts": "Listas de DJ",
+
+    "queue.title": "Cola",
+    "queue.remove_selected": "Quitar seleccionados",
+    "queue.remove_n": "Quitar {count} seleccionado(s)",
+    "queue.clear_all": "Vaciar todo",
+    "queue.stop": "Detener descarga",
+    "queue.start": "Empezar descarga",
+    "queue.empty": "Nada en la cola todavía — pega una URL arriba para empezar.",
+    "queue.remove": "Quitar",
+    "queue.choose_filters": "Elegir filtros",
+    "queue.edit_filters": "Editar filtros",
+    "queue.filtered": " · filtrado",
+    "queue.needs_filters": " · faltan filtros",
+    "queue.unfiltered": " · sin filtrar",
+    "queue.remove_failed": "No se pudo quitar: {error}",
+    "queue.removed_n": "Se quitaron {count} elemento(s) de la cola.",
+    "queue.clear_failed": "No se pudo vaciar la cola: {error}",
+
+    "activity.title": "Descargando ahora",
+    "activity.downloaded": "descargadas",
+    "activity.skipped": "omitidas",
+    "activity.failed": "fallidas",
+    "activity.retry_failed": "Reintentar fallidas",
+    "activity.retry_n": "Reintentar {count} fallidas",
+    "activity.starting": "Empezando \"{name}\"…",
+    "activity.stopped": "Detenido — {downloaded} descargadas, {skipped} omitidas antes de parar.",
+    "activity.finished": "Terminado — {downloaded} descargadas, {skipped} omitidas, {failed} fallidas.",
+    "activity.stopping": "Deteniendo — se acaba la pista actual y no empezará ninguna más…",
+    "activity.requeue_failed": "No se pudo volver a encolar \"{name}\": {error}",
+    "activity.requeued": "Vueltas a encolar {count} pista(s) fallida(s) — pulsa Empezar descarga cuando quieras.",
+
+    "preview.play": "Reproducir muestra",
+
+    "search.title": "Resultados de búsqueda",
+    "search.add_selected": "Añadir seleccionados",
+    "search.none": "Sin resultados.",
+    "search.add_failed": "No se pudo añadir \"{name}\": {error}",
+    "search.added_n": "Añadido(s) {count} elemento(s) a la cola.",
+
+    "wizard.scanning": "Escaneando…",
+    "wizard.what_queue": "¿Qué quieres poner en la cola?",
+    "wizard.scope_name": "\"{name}\" — explora y elige lanzamientos sueltos, filtra el catálogo, o encola todo.",
+    "wizard.checking_size": "Comprobando tamaño…",
+    "wizard.catalogue_count": "{count} {kind} en este catálogo.",
+    "wizard.large_warning": "Es un catálogo grande ({count} {kind}) — encolarlo todo sin filtrar consumirá mucho tiempo, ancho de banda y espacio.",
+    "wizard.confirm_large": "Entiendo que es un catálogo grande y aun así quiero encolarlo entero",
+    "wizard.filter_live": "Filtrar por BPM / género / artista",
+    "wizard.browse_pick": "Explorar y elegir lanzamientos sueltos",
+    "wizard.filter_facets": "Filtrar por facetas de género (escaneo completo)",
+    "wizard.queue_all": "Encolar todo ahora",
+    "wizard.scan_starting": "Iniciando escaneo — puede tardar bastante en catálogos grandes…",
+    "wizard.scan_failed": "Fallo al escanear: {error}",
+    "wizard.filter_title": "Filtrar este catálogo",
+    "wizard.summary": "{total} pistas escaneadas{bpm}. Elige géneros/subgéneros/artistas que quieras — déjalo vacío para \"todos\".",
+    "wizard.browse_title": "Explorar y elegir lanzamientos",
+    "wizard.browse_failed": "No se pudo cargar: {error}",
+    "wizard.add_one_failed": "No se pudo añadir un lanzamiento: {error}",
+    "wizard.added_releases": "Añadido(s) {count} lanzamiento(s) a la cola.",
+    "wizard.genres": "Géneros",
+    "wizard.subgenres": "Subgéneros",
+    "wizard.top_artists": "Artistas destacados",
+    "wizard.published_from": "Publicado desde",
+    "wizard.published_to": "Publicado hasta",
+    "wizard.queue_nofilter": "Encolar todo (sin filtro)",
+    "wizard.queue_filters": "Encolar con filtros",
+    "wizard.cancel": "Cancelar",
+
+    "filter.bpm_min": "BPM mín.",
+    "filter.bpm_max": "BPM máx.",
+    "filter.any": "cualquiera",
+    "filter.genre": "Género",
+    "filter.any_genre": "Cualquier género",
+    "filter.subgenre": "Subgénero",
+    "filter.any_subgenre": "Cualquier subgénero",
+    "filter.apply": "Aplicar",
+    "filter.artists": "Artistas",
+    "filter.tap_narrow": "— toca para acotar",
+    "filter.prompt": "Pon BPM y/o género, y pulsa Aplicar.",
+    "filter.filtering": "Filtrando…",
+    "filter.matching": "{count} pista(s) coincidente(s).",
+    "filter.failed": "Fallo al filtrar: {error}",
+    "filter.add_track_failed": "No se pudo añadir una pista: {error}",
+    "filter.added_tracks": "Añadida(s) {count} pista(s) a la cola.",
+
+    "browse.loading": "Cargando…",
+    "browse.selected": "{count} seleccionado(s)",
+    "browse.prev": "← Anterior",
+    "browse.next": "Siguiente →",
+    "browse.select_page": "seleccionar página",
+    "browse.add_selected": "Añadir seleccionados a la cola",
+    "browse.add_n": "Añadir {count} a la cola",
+    "browse.page": "Página {page}",
+    "browse.page_lower": "página {page}",
+    "browse.nothing": "Nada todavía.",
+    "browse.add_failed": "No se pudo añadir \"{name}\": {error}",
+    "browse.added_items": "Añadido(s) {count} elemento(s) a la cola — pulsa Empezar descarga cuando quieras.",
+
+    "settings.title": "Ajustes",
+    "settings.close": "Cerrar",
+    "settings.save": "Guardar ajustes",
+    "settings.saved": "Ajustes guardados.",
+    "settings.save_failed": "No se pudo guardar: {error}",
+    "settings.global_workers": "Procesos globales",
+    "settings.download_workers": "Procesos de descarga",
+    "settings.track_exists": "Si la pista ya existe",
+    "settings.exists_update": "Actualizar etiquetas",
+    "settings.exists_skip": "Omitir",
+    "settings.exists_overwrite": "Sobrescribir",
+    "settings.exists_error": "Dar error",
+    "settings.padding": "Relleno del número de pista",
+    "settings.sort_by_context": "Ordenar en carpetas por sello/lanzamiento/artista",
+    "settings.sort_by_label": "Agrupar lanzamientos en carpetas de sello",
+    "settings.force_release_dirs": "Forzar carpeta por lanzamiento en listas y charts",
+    "settings.fix_tags": "Corregir/normalizar etiquetas tras descargar",
+    "settings.keep_cover": "Conservar cover.jpg en las carpetas de lanzamiento",
+    "settings.skip_downloaded": "Omitir pistas ya descargadas antes",
+    "settings.tpl_release": "Plantilla de carpeta de lanzamiento",
+    "settings.tpl_label": "Plantilla de carpeta de sello",
+    "settings.tpl_artist": "Plantilla de carpeta de artista",
+    "settings.tpl_playlist": "Plantilla de carpeta de lista",
+    "settings.tpl_chart": "Plantilla de carpeta de chart",
+    "settings.tpl_track": "Plantilla de nombre de archivo",
+    "settings.artists_limit": "Límite de artistas",
+    "settings.artists_short": "Etiqueta para varios artistas",
+    "settings.key_system": "Notación de tonalidad",
+    "settings.key_standard_short": "Estándar (corta)",
+    "settings.key_standard": "Estándar",
+    "settings.key_openkey": "Open Key",
+    "settings.key_camelot": "Camelot",
+    "settings.cover_size": "Tamaño de portada",
+    "settings.proxy": "Proxy (opcional)",
+    "settings.watch_interval": "Intervalo de comprobación (horas)",
+    "settings.watch_dir": "Carpeta de preparación del seguimiento (opcional)",
+    "settings.watch_dir_ph": "vacío = carpeta de descargas normal",
+    "settings.watch_dir_help": "Dónde caen las descargas automáticas del seguimiento, una subcarpeta por sello, para que lo descargado sin vigilancia no entre en la biblioteca hasta que lo archives.",
+    "settings.watch_lookback": "Margen hacia atrás del seguimiento (días)",
+    "settings.watch_lookback_help": "Cuánto retroceder antes de la marca de cada sello al volver a comprobar, por si Beatport publica algo con retraso.",
+    "settings.webhook": "URL del webhook de notificaciones (opcional)",
+
+    "maint.title": "Mantenimiento de la biblioteca",
+    "maint.art_only_missing": "Corregir solo pistas sin portada (desmarca para refrescar todas)",
+    "maint.recheck_art": "Revisar portadas de álbum y pista descargadas",
+    "maint.starting": "Empezando…",
+    "maint.art_failed": "Error: {error}",
+    "maint.art_failed_toast": "Fallo al revisar portadas: {error}",
+    "maint.art_done": "Revisión de portadas terminada — {count} archivo(s) corregido(s).",
+
+    "history.title": "Historial de descargas",
+    "history.blurb": "\"Verificar biblioteca\" comprueba si el archivo de cada pista descargada sigue donde se guardó. Si luego mueves archivos a otro sitio, es normal que aparezcan entradas ausentes — eso es justo lo que evita volver a descargar lo ya descargado. Usa \"Quitar entradas ausentes\" solo si dejas los archivos en su sitio y quieres limpiar los realmente perdidos.",
+    "history.verify": "Verificar biblioteca",
+    "history.checking": "Comprobando…",
+    "history.remove_missing": "Quitar entradas ausentes",
+    "history.remove_missing_n": "Quitar {count} entradas ausentes",
+    "history.removed": "Se quitaron {count} entradas.",
+    "history.clear": "Borrar historial de descargas",
+    "history.clear_blurb": "Borra toda la base de datos de historial/duplicados. Úsalo tras mover un lote de descargas a otro sitio si quieres empezar de cero — las descargas futuras no se tratarán como duplicados de nada anterior al borrado.",
+    "history.cleared": "Se borraron {count} entradas del historial.",
+
+    "stats.title": "Estadísticas de la biblioteca",
+    "stats.all_time": "Todo el tiempo",
+    "stats.90d": "90 días",
+    "stats.30d": "30 días",
+    "stats.7d": "7 días",
+    "stats.per_day": "Pistas por día",
+    "stats.top_genres": "Géneros principales",
+    "stats.top_artists": "Artistas principales",
+    "stats.top_labels": "Sellos principales",
+    "stats.top_subgenres": "Subgéneros principales",
+    "stats.failures": "Descargas fallidas — por qué",
+    "stats.bpm": "Distribución de BPM",
+    "stats.keys": "Distribución de tonalidades",
+    "stats.per_month": "Pistas descargadas por mes",
+    "stats.volume_per_month": "Datos descargados por mes",
+    "stats.load_failed": "No se pudieron cargar las estadísticas: {error}",
+    "stats.tile_tracks": "Pistas",
+    "stats.tile_releases": "Lanzamientos",
+    "stats.tile_labels": "Sellos",
+    "stats.tile_artists": "Artistas",
+    "stats.tile_downloaded": "Descargado",
+    "stats.tile_success": "Tasa de éxito",
+    "stats.tile_failed": "Fallidas",
+
+    "browse.tap_select": "{count} {kind} en este catálogo — toca para elegir los que quieras.",
+    "browse.showing_100": " Mostrando 100 por página.",
+
+    "watchsec.labels": "Sellos",
+    "watchsec.artists": "Artistas",
+    "watchsec.upcoming": "{count} {noun} próximamente: ",
+    "watchsec.noun_track": "pista",
+    "watchsec.noun_tracks": "pistas",
+    "watchsec.noun_prerelease": "prelanzamiento",
+    "watchsec.noun_prereleases": "prelanzamientos",
+    "watchsec.full_to": "catálogo completo hasta {through}",
+    "watchsec.checked_to": "comprobado hasta {date}",
+    "watchsec.not_checked": "sin comprobar todavía",
+    "watchsec.from": "Desde",
+    "watchsec.to": "Hasta",
+    "watchsec.rescan": "Revisar vistos",
+    "watchsec.save_check": "Guardar y comprobar",
+    "watchsec.reopened": "{count} lanzamientos reabiertos, ",
+    "watchsec.range_saved": "Rango guardado — {cleared}comprobando este sello ahora.",
+    "watchsec.range_saved_busy": "Rango guardado, {cleared}pero ya hay una comprobación en curso; se aplicará en la siguiente.",
+    "watchsec.remove": "Dejar de seguir",
+
+    "activity.art_done_full": "Hecho — {files} archivo(s) corregido(s) en {fixed}/{checked} lanzamiento(s). {ok} ya tenían portada, {noid} archivo(s) son anteriores al etiquetado de ID, {failed} fallaron.",
+    "watch.pending_note": " {count} prelanzamiento(s) detectado(s), se descargarán al publicarse.",
+    "watch.pending_note_short": " {count} prelanzamiento(s) detectado(s).",
+    "watch.label_updated": "{name}: {releases} lanzamiento(s) nuevo(s), {tracks} pista(s) descargada(s) — al día hasta {through}.{note}",
+
+    "explore.in_top100": "en el Top 100",
+    "explore.n_tracks": "{count} pista(s)",
+
+    "history.verify_summary": "{total} registradas — {ok} encontradas en disco, {missing} ausentes, {nopath} anteriores al seguimiento de rutas.",
+    "history.confirm_remove": "¿Quitar del historial las entradas cuyos archivos ya no están? No se puede deshacer.",
+    "history.confirm_clear": "¿Borrar todo el historial de descargas? La detección de duplicados dejará de saber nada de lo descargado antes de este punto. No se puede deshacer.",
+  },
+
+  nl: {
+    "lang.name": "Nederlands",
+
+    "hero.tagline": "Beatport / Beatsource downloader",
+
+    "top.starting": "Starten…",
+    "top.stats": "Statistieken",
+    "top.settings": "Instellingen",
+    "top.language": "Taal",
+
+    "conn.setup_needed": "Instellen nodig",
+    "conn.connected": "Verbonden",
+    "conn.failed": "Verbinding mislukt",
+    "conn.connecting": "Verbinden…",
+
+    "setup.title": "Even instellen",
+    "setup.blurb": "Een paar verplichte instellingen voordat BP-DL met Beatport / Beatsource kan praten.",
+    "setup.submit": "Opslaan en verbinden",
+
+    "connecting.text": "Verbinden met Beatport…",
+    "connecting.error": "Verbinden mislukt: {error}",
+    "connecting.retry": "Opnieuw verbinden",
+
+    "field.username": "Gebruikersnaam",
+    "field.password": "Wachtwoord",
+    "field.downloads_dir": "Downloadmap",
+    "field.quality": "Kwaliteit",
+    "quality.lossless": "Lossless (FLAC)",
+    "quality.high": "Hoog (AAC 256 kbps)",
+    "quality.medium": "Gemiddeld (AAC 128 kbps)",
+
+    "input.placeholder": "Plak een label-, artiest-, track- of release-URL, of typ een zoekopdracht…",
+    "input.add": "Toevoegen",
+    "input.working": "Bezig…",
+    "input.added": "\"{name}\" toegevoegd.",
+
+    "watch.title": "Releases volgen",
+    "watch.check_now": "Nu controleren",
+    "watch.blurb": "Van gevolgde labels wordt elke nieuwe release automatisch opgehaald; van gevolgde artiesten hun nieuwe tracks. Het controle-interval staat bij Instellingen.",
+    "watch.placeholder": "Plak een label- of artiest-URL om te volgen…",
+    "watch.add": "Volgen",
+    "watch.empty": "Je volgt nog geen labels of artiesten — plak er hierboven een en elke nieuwe release komt vanzelf binnen.",
+    "watch.watching": "Wordt gevolgd.",
+    "watch.checking_now": "Nu aan het controleren…",
+    "watch.checking_n": "{count} gevolgde item(s) controleren...",
+    "watch.failed": "Mislukt: {error}",
+    "watch.found": "{releases} nieuwe release(s) gevonden, {tracks} track(s) gedownload.{pending}",
+    "watch.found_toast": "Controle: {releases} nieuwe release(s) gedownload.",
+    "watch.none_found": "Geen nieuwe releases gevonden.{pending}",
+    "watch.full_downloaded": "{name}: volledige catalogus gedownload, gevolgd vanaf {through}. ",
+    "watch.update_failed": "{name}: bijwerken mislukt — {error}",
+    "watch.new_downloaded": "{name}: {releases} nieuwe release(s) gedownload.",
+    "watch.up_to_date": "{name}: al bij.{note}",
+    "watch.up_to_date_toast": "{name} is al bij.",
+    "watch.rescan_title": "Releases die al als gezien staan opnieuw bekijken. Nodig als je het bereik naar achteren uitbreidt.",
+    "watch.update_latest": "Bijwerken tot nieuwste",
+    "watch.update_latest_title": "Alles ophalen wat Beatport sinds {through} heeft uitgebracht",
+    "watch.saving": "Opslaan…",
+    "watch.updating": "Bijwerken…",
+    "watch.range_failed": "Bereik opslaan mislukt: {error}",
+    "watch.since": "Zoeken naar releases uitgebracht sinds {since}…",
+    "watch.update_error": "Bijwerken mislukt: {error}",
+
+    "explore.title": "Ontdekken",
+    "explore.browse": "Beatport doorbladeren ▾",
+    "explore.hide": "Verbergen ▴",
+    "explore.genre": "Genre",
+    "explore.all_genres": "Alle genres (Beatport Top 100)",
+    "explore.show": "Tonen",
+    "explore.top100": "Top 100",
+    "explore.new_tracks": "Nieuwe tracks",
+    "explore.new_releases": "Nieuwe releases",
+    "explore.dj_charts": "DJ-charts",
+
+    "queue.title": "Wachtrij",
+    "queue.remove_selected": "Selectie verwijderen",
+    "queue.remove_n": "{count} geselecteerde verwijderen",
+    "queue.clear_all": "Alles wissen",
+    "queue.stop": "Downloaden stoppen",
+    "queue.start": "Downloaden starten",
+    "queue.empty": "Nog niets in de wachtrij — plak hierboven een URL om te beginnen.",
+    "queue.remove": "Verwijderen",
+    "queue.choose_filters": "Filters kiezen",
+    "queue.edit_filters": "Filters bewerken",
+    "queue.filtered": " · gefilterd",
+    "queue.needs_filters": " · filters nodig",
+    "queue.unfiltered": " · ongefilterd",
+    "queue.remove_failed": "Verwijderen mislukt: {error}",
+    "queue.removed_n": "{count} item(s) uit de wachtrij verwijderd.",
+    "queue.clear_failed": "Wachtrij wissen mislukt: {error}",
+
+    "activity.title": "Nu aan het downloaden",
+    "activity.downloaded": "gedownload",
+    "activity.skipped": "overgeslagen",
+    "activity.failed": "mislukt",
+    "activity.retry_failed": "Mislukte opnieuw proberen",
+    "activity.retry_n": "{count} mislukte opnieuw proberen",
+    "activity.starting": "\"{name}\" starten…",
+    "activity.stopped": "Gestopt — {downloaded} gedownload, {skipped} overgeslagen voor het stoppen.",
+    "activity.finished": "Klaar — {downloaded} gedownload, {skipped} overgeslagen, {failed} mislukt.",
+    "activity.stopping": "Stoppen — de huidige track wordt afgemaakt, er begint geen nieuwe meer…",
+    "activity.requeue_failed": "\"{name}\" opnieuw in de wachtrij zetten mislukt: {error}",
+    "activity.requeued": "{count} mislukte track(s) opnieuw in de wachtrij — druk op Downloaden starten wanneer je klaar bent.",
+
+    "preview.play": "Voorbeeld afspelen",
+
+    "search.title": "Zoekresultaten",
+    "search.add_selected": "Selectie toevoegen",
+    "search.none": "Geen resultaten gevonden.",
+    "search.add_failed": "\"{name}\" toevoegen mislukt: {error}",
+    "search.added_n": "{count} item(s) aan de wachtrij toegevoegd.",
+
+    "wizard.scanning": "Scannen…",
+    "wizard.what_queue": "Wat wil je in de wachtrij zetten?",
+    "wizard.scope_name": "\"{name}\" — blader en kies losse releases, filter de catalogus, of zet alles in de wachtrij.",
+    "wizard.checking_size": "Grootte controleren…",
+    "wizard.catalogue_count": "{count} {kind} in deze catalogus.",
+    "wizard.large_warning": "Dat is een grote catalogus ({count} {kind}) — alles ongefilterd in de wachtrij zetten kost flink wat tijd, bandbreedte en opslag.",
+    "wizard.confirm_large": "Ik begrijp dat dit een grote catalogus is en wil hem toch helemaal in de wachtrij zetten",
+    "wizard.filter_live": "Filteren op BPM / genre / artiest",
+    "wizard.browse_pick": "Bladeren en losse releases kiezen",
+    "wizard.filter_facets": "Filteren op genre-facetten (volledige scan)",
+    "wizard.queue_all": "Alles nu in de wachtrij",
+    "wizard.scan_starting": "Scan starten — bij grote catalogi kan dit even duren…",
+    "wizard.scan_failed": "Scan mislukt: {error}",
+    "wizard.filter_title": "Deze catalogus filteren",
+    "wizard.summary": "{total} tracks gescand{bpm}. Kies genres/subgenres/artiesten om te houden — leeg laten betekent \"alles\".",
+    "wizard.browse_title": "Bladeren en releases kiezen",
+    "wizard.browse_failed": "Laden mislukt: {error}",
+    "wizard.add_one_failed": "Eén release toevoegen mislukt: {error}",
+    "wizard.added_releases": "{count} release(s) aan de wachtrij toegevoegd.",
+    "wizard.genres": "Genres",
+    "wizard.subgenres": "Subgenres",
+    "wizard.top_artists": "Topartiesten",
+    "wizard.published_from": "Uitgebracht vanaf",
+    "wizard.published_to": "Uitgebracht tot",
+    "wizard.queue_nofilter": "Alles in de wachtrij (geen filter)",
+    "wizard.queue_filters": "In de wachtrij met filters",
+    "wizard.cancel": "Annuleren",
+
+    "filter.bpm_min": "BPM min.",
+    "filter.bpm_max": "BPM max.",
+    "filter.any": "alle",
+    "filter.genre": "Genre",
+    "filter.any_genre": "Elk genre",
+    "filter.subgenre": "Subgenre",
+    "filter.any_subgenre": "Elk subgenre",
+    "filter.apply": "Toepassen",
+    "filter.artists": "Artiesten",
+    "filter.tap_narrow": "— tik om te verfijnen",
+    "filter.prompt": "Stel BPM en/of genre in en klik Toepassen.",
+    "filter.filtering": "Filteren…",
+    "filter.matching": "{count} passende track(s).",
+    "filter.failed": "Filteren mislukt: {error}",
+    "filter.add_track_failed": "Een track toevoegen mislukt: {error}",
+    "filter.added_tracks": "{count} track(s) aan de wachtrij toegevoegd.",
+
+    "browse.loading": "Laden…",
+    "browse.selected": "{count} geselecteerd",
+    "browse.prev": "← Vorige",
+    "browse.next": "Volgende →",
+    "browse.select_page": "pagina selecteren",
+    "browse.add_selected": "Selectie aan wachtrij toevoegen",
+    "browse.add_n": "{count} aan wachtrij toevoegen",
+    "browse.page": "Pagina {page}",
+    "browse.page_lower": "pagina {page}",
+    "browse.nothing": "Nog niets.",
+    "browse.add_failed": "\"{name}\" toevoegen mislukt: {error}",
+    "browse.added_items": "{count} item(s) aan de wachtrij toegevoegd — druk op Downloaden starten wanneer je klaar bent.",
+
+    "settings.title": "Instellingen",
+    "settings.close": "Sluiten",
+    "settings.save": "Instellingen opslaan",
+    "settings.saved": "Instellingen opgeslagen.",
+    "settings.save_failed": "Opslaan mislukt: {error}",
+    "settings.global_workers": "Globale workers",
+    "settings.download_workers": "Download-workers",
+    "settings.track_exists": "Als de track al bestaat",
+    "settings.exists_update": "Tags bijwerken",
+    "settings.exists_skip": "Overslaan",
+    "settings.exists_overwrite": "Overschrijven",
+    "settings.exists_error": "Foutmelding",
+    "settings.padding": "Opvulling tracknummer",
+    "settings.sort_by_context": "In mappen sorteren op label/release/artiest",
+    "settings.sort_by_label": "Releases groeperen in labelmappen",
+    "settings.force_release_dirs": "Map per release afdwingen in playlists/charts",
+    "settings.fix_tags": "Tags corrigeren/normaliseren na downloaden",
+    "settings.keep_cover": "cover.jpg in releasemappen bewaren",
+    "settings.skip_downloaded": "Eerder gedownloade tracks overslaan",
+    "settings.tpl_release": "Sjabloon releasemap",
+    "settings.tpl_label": "Sjabloon labelmap",
+    "settings.tpl_artist": "Sjabloon artiestmap",
+    "settings.tpl_playlist": "Sjabloon playlistmap",
+    "settings.tpl_chart": "Sjabloon chartmap",
+    "settings.tpl_track": "Sjabloon bestandsnaam",
+    "settings.artists_limit": "Artiestenlimiet",
+    "settings.artists_short": "Aanduiding diverse artiesten",
+    "settings.key_system": "Toonsoortnotatie",
+    "settings.key_standard_short": "Standaard (kort)",
+    "settings.key_standard": "Standaard",
+    "settings.key_openkey": "Open Key",
+    "settings.key_camelot": "Camelot",
+    "settings.cover_size": "Hoesgrootte",
+    "settings.proxy": "Proxy (optioneel)",
+    "settings.watch_interval": "Controle-interval volgen (uren)",
+    "settings.watch_dir": "Wachtmap voor volgen (optioneel)",
+    "settings.watch_dir_ph": "leeg = normale downloadmap",
+    "settings.watch_dir_help": "Waar automatische downloads van de volglijst terechtkomen, één submap per label, zodat onbeheerde downloads buiten de bibliotheek blijven tot je ze opbergt.",
+    "settings.watch_lookback": "Terugkijkperiode volgen (dagen)",
+    "settings.watch_lookback_help": "Hoe ver vóór de markering van elk label opnieuw wordt gekeken, voor het geval Beatport iets laat plaatst.",
+    "settings.webhook": "Webhook-URL voor meldingen (optioneel)",
+
+    "maint.title": "Bibliotheekonderhoud",
+    "maint.art_only_missing": "Alleen tracks zonder hoes herstellen (vink uit om elke hoes te vernieuwen)",
+    "maint.recheck_art": "Gedownloade album- en trackhoezen opnieuw controleren",
+    "maint.starting": "Starten…",
+    "maint.art_failed": "Mislukt: {error}",
+    "maint.art_failed_toast": "Hoescontrole mislukt: {error}",
+    "maint.art_done": "Hoescontrole klaar — {count} bestand(en) hersteld.",
+
+    "history.title": "Downloadgeschiedenis",
+    "history.blurb": "\"Bibliotheek verifiëren\" controleert of het bestand van elke gedownloade track nog staat waar het is opgeslagen. Verplaats je bestanden later, dan zijn ontbrekende items normaal — juist dat voorkomt dat al gedownloade tracks opnieuw worden gehaald. Gebruik \"Ontbrekende items verwijderen\" alleen als je bestanden op hun plek laat en echt verloren items wilt opruimen.",
+    "history.verify": "Bibliotheek verifiëren",
+    "history.checking": "Controleren…",
+    "history.remove_missing": "Ontbrekende items verwijderen",
+    "history.remove_missing_n": "{count} ontbrekende items verwijderen",
+    "history.removed": "{count} items verwijderd.",
+    "history.clear": "Downloadgeschiedenis wissen",
+    "history.clear_blurb": "Wist de hele geschiedenis-/duplicatendatabase. Gebruik dit nadat je een partij downloads elders hebt gezet en met een schone lei wilt beginnen — toekomstige downloads gelden dan niet als duplicaat van iets van vóór het wissen.",
+    "history.cleared": "{count} items uit de geschiedenis gewist.",
+
+    "stats.title": "Bibliotheekstatistieken",
+    "stats.all_time": "Alle tijd",
+    "stats.90d": "90 dagen",
+    "stats.30d": "30 dagen",
+    "stats.7d": "7 dagen",
+    "stats.per_day": "Tracks per dag",
+    "stats.top_genres": "Topgenres",
+    "stats.top_artists": "Topartiesten",
+    "stats.top_labels": "Toplabels",
+    "stats.top_subgenres": "Topsubgenres",
+    "stats.failures": "Mislukte downloads — waarom",
+    "stats.bpm": "BPM-verdeling",
+    "stats.keys": "Toonsoortverdeling",
+    "stats.per_month": "Tracks gedownload per maand",
+    "stats.volume_per_month": "Data gedownload per maand",
+    "stats.load_failed": "Statistieken laden mislukt: {error}",
+    "stats.tile_tracks": "Tracks",
+    "stats.tile_releases": "Releases",
+    "stats.tile_labels": "Labels",
+    "stats.tile_artists": "Artiesten",
+    "stats.tile_downloaded": "Gedownload",
+    "stats.tile_success": "Slagingspercentage",
+    "stats.tile_failed": "Mislukt",
+
+    "browse.tap_select": "{count} {kind} in deze catalogus — tik om te kiezen wat je wilt.",
+    "browse.showing_100": " 100 per pagina getoond.",
+
+    "watchsec.labels": "Labels",
+    "watchsec.artists": "Artiesten",
+    "watchsec.upcoming": "{count} aankomende {noun}: ",
+    "watchsec.noun_track": "track",
+    "watchsec.noun_tracks": "tracks",
+    "watchsec.noun_prerelease": "pre-release",
+    "watchsec.noun_prereleases": "pre-releases",
+    "watchsec.full_to": "volledige catalogus tot {through}",
+    "watchsec.checked_to": "gecontroleerd tot {date}",
+    "watchsec.not_checked": "nog niet gecontroleerd",
+    "watchsec.from": "Van",
+    "watchsec.to": "Tot",
+    "watchsec.rescan": "Geziene opnieuw",
+    "watchsec.save_check": "Opslaan en controleren",
+    "watchsec.reopened": "{count} releases heropend, ",
+    "watchsec.range_saved": "Bereik opgeslagen — {cleared}dit label wordt nu gecontroleerd.",
+    "watchsec.range_saved_busy": "Bereik opgeslagen, {cleared}maar er loopt al een controle; het gaat mee met de volgende.",
+    "watchsec.remove": "Niet meer volgen",
+
+    "activity.art_done_full": "Klaar — {files} bestand(en) hersteld in {fixed}/{checked} release(s). {ok} hadden al een hoes, {noid} bestand(en) dateren van vóór ID-tagging, {failed} mislukt.",
+    "watch.pending_note": " {count} pre-release(s) gezien, worden gedownload zodra ze uit zijn.",
+    "watch.pending_note_short": " {count} pre-release(s) gezien.",
+    "watch.label_updated": "{name}: {releases} nieuwe release(s), {tracks} track(s) gedownload — nu bij tot {through}.{note}",
+
+    "explore.in_top100": "in de Top 100",
+    "explore.n_tracks": "{count} track(s)",
+
+    "history.verify_summary": "{total} bijgehouden — {ok} op schijf gevonden, {missing} ontbreken, {nopath} dateren van vóór padregistratie.",
+    "history.confirm_remove": "Geschiedenisitems verwijderen van tracks waarvan de bestanden weg zijn? Dit kan niet ongedaan worden gemaakt.",
+    "history.confirm_clear": "De hele downloadgeschiedenis wissen? Duplicaatdetectie weet dan niets meer van wat hiervoor is gedownload. Dit kan niet ongedaan worden gemaakt.",
+  },
+};
+
+/* Flags are inline SVG, not emoji: Windows ships no flag glyphs, so 🇪🇸 renders
+ * there as the letters "ES" — the exact audience this feature is for would see
+ * nothing recognisable. */
+const LANG_FLAGS = {
+  en: '<svg viewBox="0 0 60 30" aria-hidden="true"><clipPath id="fen"><path d="M0 0v30h60V0z"/></clipPath><g clip-path="url(#fen)"><path fill="#012169" d="M0 0v30h60V0z"/><path stroke="#fff" stroke-width="6" d="m0 0 60 30m0-30L0 30"/><path stroke="#C8102E" stroke-width="4" d="m0 0 60 30m0-30L0 30"/><path stroke="#fff" stroke-width="10" d="M30 0v30M0 15h60"/><path stroke="#C8102E" stroke-width="6" d="M30 0v30M0 15h60"/></g></svg>',
+  es: '<svg viewBox="0 0 60 30" aria-hidden="true"><path fill="#AA151B" d="M0 0h60v30H0z"/><path fill="#F1BF00" d="M0 7.5h60v15H0z"/></svg>',
+  nl: '<svg viewBox="0 0 60 30" aria-hidden="true"><path fill="#21468B" d="M0 0h60v30H0z"/><path fill="#fff" d="M0 0h60v20H0z"/><path fill="#AE1C28" d="M0 0h60v10H0z"/></svg>',
+};
+
+const LANG_STORE = "bpdl_lang";
+
+function pickInitialLang() {
+  const saved = localStorage.getItem(LANG_STORE);
+  if (saved && I18N[saved]) return saved;
+  // No stored choice: honour the browser, which is what a first-time Spanish or
+  // Dutch visitor expects. Falls back to English for everything else.
+  for (const tag of navigator.languages || [navigator.language || "en"]) {
+    const code = String(tag).slice(0, 2).toLowerCase();
+    if (I18N[code]) return code;
+  }
+  return "en";
+}
+
+let LANG = pickInitialLang();
+
+function currentLang() {
+  return LANG;
+}
+
+function t(key, vars) {
+  let s = I18N[LANG]?.[key];
+  if (s === undefined) s = I18N.en[key];
+  if (s === undefined) return key; // loud on purpose: an untranslated key shows itself
+  if (vars) {
+    for (const k of Object.keys(vars)) {
+      s = s.split("{" + k + "}").join(String(vars[k] ?? ""));
+    }
+  }
+  return s;
+}
+
+/* Re-label everything currently in the DOM. Static markup carries the attributes;
+ * anything rendered by script is redrawn by the callbacks registered below. */
+function applyI18n(root) {
+  const scope = root || document;
+  scope.querySelectorAll("[data-i18n]").forEach((el) => {
+    el.textContent = t(el.dataset.i18n);
+  });
+  scope.querySelectorAll("[data-i18n-html]").forEach((el) => {
+    el.innerHTML = t(el.dataset.i18nHtml);
+  });
+  scope.querySelectorAll("[data-i18n-placeholder]").forEach((el) => {
+    el.placeholder = t(el.dataset.i18nPlaceholder);
+  });
+  scope.querySelectorAll("[data-i18n-title]").forEach((el) => {
+    el.title = t(el.dataset.i18nTitle);
+  });
+  document.documentElement.lang = LANG;
+}
+
+const _langListeners = [];
+
+function onLangChange(fn) {
+  _langListeners.push(fn);
+}
+
+function setLang(code) {
+  if (!I18N[code] || code === LANG) return;
+  LANG = code;
+  localStorage.setItem(LANG_STORE, code);
+  applyI18n();
+  document.querySelectorAll("#lang-switch .lang-btn").forEach((b) => {
+    b.classList.toggle("selected", b.dataset.lang === code);
+    b.setAttribute("aria-pressed", String(b.dataset.lang === code));
+  });
+  // Anything the scripts drew themselves has to be redrawn — the attributes above
+  // only reach static markup.
+  for (const fn of _langListeners) {
+    try { fn(code); } catch (_) {}
+  }
+}
+
+function buildLangSwitch() {
+  const wrap = document.getElementById("lang-switch");
+  if (!wrap) return;
+  wrap.setAttribute("role", "group");
+  wrap.setAttribute("aria-label", t("top.language"));
+  wrap.innerHTML = "";
+  for (const code of Object.keys(I18N)) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "lang-btn" + (code === LANG ? " selected" : "");
+    b.dataset.lang = code;
+    b.title = I18N[code]["lang.name"];
+    b.setAttribute("aria-pressed", String(code === LANG));
+    b.innerHTML = LANG_FLAGS[code] || code;
+    b.addEventListener("click", () => setLang(code));
+    wrap.appendChild(b);
+  }
+}

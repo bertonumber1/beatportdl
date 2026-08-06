@@ -110,6 +110,17 @@ variable if you need it elsewhere.
    downloaded/skipped/failed stats bar, toasts on completion.
 6. Gear icon → **Settings**, any time — every field, plus the album/track art recheck tool under
    "Library maintenance".
+7. **Language** — the flags in the top bar switch the whole UI between English, Spanish and
+   Dutch. The choice is remembered in the browser; with none saved, the browser's own language
+   is used and anything else falls back to English.
+
+### Adding a language
+
+`bpdl/webui/static/i18n.js` holds one dictionary per language. Copy the `en` block, translate
+the values, add a flag SVG to `LANG_FLAGS` — the switcher builds itself from the keys of `I18N`,
+so nothing else needs touching. `tests/test_i18n.py` then enforces that the new language defines
+exactly the English key set, keeps every `{placeholder}` intact, and leaves no string
+untranslated.
 
 ## Config reference
 

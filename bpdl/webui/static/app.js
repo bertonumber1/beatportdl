@@ -67,7 +67,7 @@ function makePreviewBtn(url) {
   const b = document.createElement("button");
   b.type = "button";
   b.className = "preview-btn";
-  b.title = "Play preview";
+  b.title = t("preview.play");
   b.textContent = "▶";
   b.addEventListener("click", (e) => {
     e.stopPropagation(); // don't toggle the card's selection
@@ -117,22 +117,22 @@ function render() {
   pill.className = "pill";
   if (!s.configured) {
     pill.classList.add("pending");
-    pill.querySelector(".label").textContent = "Setup needed";
+    pill.querySelector(".label").textContent = t("conn.setup_needed");
   } else if (s.login_status === "ok") {
     pill.classList.add("ok");
-    pill.querySelector(".label").textContent = "Connected";
+    pill.querySelector(".label").textContent = t("conn.connected");
   } else if (s.login_status === "error") {
     pill.classList.add("error");
-    pill.querySelector(".label").textContent = "Connection failed";
+    pill.querySelector(".label").textContent = t("conn.failed");
   } else {
     pill.classList.add("connecting");
-    pill.querySelector(".label").textContent = "Connecting…";
+    pill.querySelector(".label").textContent = t("conn.connecting");
   }
 
   if (s.configured && s.login_status !== "ok") {
     $("#connecting-spinner").classList.toggle("hidden", s.login_status === "error");
     $("#connecting-text").textContent =
-      s.login_status === "error" ? `Couldn't connect: ${s.login_error}` : "Connecting to Beatport…";
+      s.login_status === "error" ? t("connecting.error", { error: s.login_error }) : t("connecting.text");
     $("#retry-login-btn").classList.toggle("hidden", s.login_status !== "error");
   }
 
@@ -158,12 +158,12 @@ function renderQueue() {
     card.innerHTML = `
       <div class="card-art" style="${artStyle(item.name, item.cover)}">${item.cover ? "" : initials(item.name)}</div>
       <div class="card-body">
-        <div class="card-badge">${item.type.replace(/s$/, "")}${item.filters === undefined ? "" : item.filters ? " · filtered" : item.needs_wizard ? " · needs filters" : " · unfiltered"}</div>
+        <div class="card-badge">${item.type.replace(/s$/, "")}${item.filters === undefined ? "" : item.filters ? t("queue.filtered") : item.needs_wizard ? t("queue.needs_filters") : t("queue.unfiltered")}</div>
         <div class="card-name" title="${esc(item.name)}">${esc(item.name)}</div>
         <div class="card-subtitle" title="${esc(item.subtitle)}">${esc(item.subtitle)}</div>
       </div>
-      ${(item.type === "labels" || item.type === "artists") ? `<button class="card-edit" title="${item.needs_wizard ? "Choose filters" : "Edit filters"}">&#9998;</button>` : ""}
-      <button class="card-remove" title="Remove">&times;</button>
+      ${(item.type === "labels" || item.type === "artists") ? `<button class="card-edit" title="${item.needs_wizard ? t("queue.choose_filters") : t("queue.edit_filters")}">&#9998;</button>` : ""}
+      <button class="card-remove" title="${t("queue.remove")}">&times;</button>
     `;
     card.querySelector(".card-remove").addEventListener("click", (e) => { e.stopPropagation(); removeQueueItem(idx); });
     const editBtn = card.querySelector(".card-edit");
@@ -180,7 +180,7 @@ function updateQueueSelCount() {
   const n = document.querySelectorAll("#queue-grid .queue-card.selected").length;
   const btn = $("#remove-selected-btn");
   btn.classList.toggle("hidden", n === 0);
-  btn.textContent = `Remove ${n} selected`;
+  btn.textContent = t("queue.remove_n", { count: n });
 }
 
 async function removeQueueItem(idx) {
@@ -189,7 +189,7 @@ async function removeQueueItem(idx) {
     state.queue = data.queue;
     renderQueue();
   } catch (e) {
-    showToast(`Failed to remove: ${e.message}`, "error");
+    showToast(t("queue.remove_failed", { error: e.message }), "error");
   }
 }
 
@@ -205,9 +205,9 @@ async function removeSelectedQueueItems() {
       data = await api("DELETE", `/api/queue/${idx}`);
     }
     if (data) state.queue = data.queue;
-    showToast(`Removed ${idxs.length} item(s) from the queue.`, "success");
+    showToast(t("queue.removed_n", { count: idxs.length }), "success");
   } catch (e) {
-    showToast(`Failed to remove: ${e.message}`, "error");
+    showToast(t("queue.remove_failed", { error: e.message }), "error");
     try { state.queue = (await api("GET", "/api/status")).queue || []; } catch (_) {}
   }
   $("#remove-selected-btn").disabled = false;
@@ -220,7 +220,7 @@ async function handleAdd() {
   const input = $("#url-input");
   const raw = input.value.trim();
   if (!raw) return;
-  $("#input-status").textContent = "Working…";
+  $("#input-status").textContent = t("input.working");
   $("#input-status").classList.remove("err");
   try {
     const isUrl = raw.startsWith("https://www.beatport.com") || raw.startsWith("https://www.beatsource.com");
@@ -230,7 +230,7 @@ async function handleAdd() {
       state.queue.push(item);
       renderQueue();
       input.value = "";
-      $("#input-status").textContent = `Added "${item.name}".`;
+      $("#input-status").textContent = t("input.added", { name: item.name });
       if (item.needs_wizard) openWizard(state.queue.length - 1, item.url);
     } else {
       state.searchResults = data.search_results || [];
@@ -249,7 +249,7 @@ function openSearchModal() {
   const grid = $("#search-results-grid");
   grid.innerHTML = "";
   if (!state.searchResults.length) {
-    grid.innerHTML = '<p class="muted small">No results found.</p>';
+    grid.innerHTML = `<p class="muted small">${esc(t("search.none"))}</p>`;
   }
   state.searchResults.forEach((r, i) => {
     const card = document.createElement("div");
@@ -281,12 +281,12 @@ async function addSelectedSearchResults() {
       state.queue.push(item);
       if (item.needs_wizard && firstWizard === null) firstWizard = { idx: state.queue.length - 1, url: item.url };
     } catch (e) {
-      showToast(`Failed to add "${r.name}": ${e.message}`, "error");
+      showToast(t("search.add_failed", { name: r.name, error: e.message }), "error");
     }
   }
   renderQueue();
   $("#search-modal").classList.add("hidden");
-  if (selected.length) showToast(`Added ${selected.length} item(s) to queue.`, "success");
+  if (selected.length) showToast(t("search.added_n", { count: selected.length }), "success");
   if (firstWizard) openWizard(firstWizard.idx, firstWizard.url);
 }
 
@@ -298,8 +298,8 @@ function openWizard(queueIndex, url) {
   state.wizardQueueIndex = queueIndex;
   state.wizardScan = null;
   const item = state.queue[queueIndex];
-  $("#wizard-title").textContent = "What do you want to queue?";
-  $("#wizard-scope-name").textContent = `"${item ? item.name : url}" — browse and pick individual releases, filter the catalogue, or queue the whole thing.`;
+  $("#wizard-title").textContent = t("wizard.what_queue");
+  $("#wizard-scope-name").textContent = t("wizard.scope_name", { name: item ? item.name : url });
   $("#wizard-scope").classList.remove("hidden");
   $("#wizard-scanning").classList.add("hidden");
   $("#wizard-results").classList.add("hidden");
@@ -308,7 +308,7 @@ function openWizard(queueIndex, url) {
   $("#wizard-modal").classList.remove("hidden");
   $("#wizard-modal").dataset.url = url;
 
-  $("#wizard-scope-size").textContent = "Checking size…";
+  $("#wizard-scope-size").textContent = t("wizard.checking_size");
   $("#wizard-scope-warning").classList.add("hidden");
   $("#wizard-scope-confirm-row").classList.add("hidden");
   $("#wizard-scope-confirm-checkbox").checked = false;
@@ -321,11 +321,11 @@ function openWizard(queueIndex, url) {
         $("#wizard-scope-size").textContent = "";
         return;
       }
-      $("#wizard-scope-size").textContent = `${data.count} ${data.kind} in this catalogue.`;
+      $("#wizard-scope-size").textContent = t("wizard.catalogue_count", { count: data.count, kind: data.kind });
       if (data.count > LARGE_CATALOGUE_THRESHOLD) {
         state.wizardLargeCatalogue = true;
         $("#wizard-scope-warning").textContent =
-          `That's a large catalogue (${data.count} ${data.kind}) — queuing everything unfiltered will use significant time, bandwidth, and storage.`;
+          t("wizard.large_warning", { count: data.count, kind: data.kind });
         $("#wizard-scope-warning").classList.remove("hidden");
         $("#wizard-scope-confirm-row").classList.remove("hidden");
         $("#wizard-scope-all-btn").disabled = true;
@@ -337,13 +337,13 @@ function openWizard(queueIndex, url) {
 }
 
 function startWizardScan(url) {
-  $("#wizard-title").textContent = "Scanning…";
+  $("#wizard-title").textContent = t("wizard.scanning");
   $("#wizard-scope").classList.add("hidden");
   $("#wizard-scanning").classList.remove("hidden");
   $("#wizard-results").classList.add("hidden");
-  $("#wizard-scan-status").textContent = "Starting scan — this can take a while for large catalogues…";
+  $("#wizard-scan-status").textContent = t("wizard.scan_starting");
   api("POST", "/api/scan", { url }).catch((e) => {
-    $("#wizard-scan-status").textContent = `Scan failed: ${e.message}`;
+    $("#wizard-scan-status").textContent = t("wizard.scan_failed", { error: e.message });
   });
 }
 
@@ -366,7 +366,7 @@ function chipList(container, entries, selectedSet) {
 // ---- stats charts (single measure everywhere -> one hue, values labeled) ----
 
 function formatNum(n) {
-  return Number(n).toLocaleString("en-GB");
+  return Number(n).toLocaleString(currentLang() === "en" ? "en-GB" : currentLang());
 }
 
 // Shared floating tooltip for column charts (hbar rows label every value inline,
@@ -386,7 +386,7 @@ function chartTip() {
 function renderHBars(container, entries, labelKey, valueKey, formatValue, limit = 12) {
   container.innerHTML = "";
   if (!entries || !entries.length) {
-    container.innerHTML = '<p class="muted small">Nothing yet.</p>';
+    container.innerHTML = `<p class="muted small">${esc(t("browse.nothing"))}</p>`;
     return;
   }
   const rows = entries.slice(0, limit);
@@ -408,7 +408,7 @@ function renderHBars(container, entries, labelKey, valueKey, formatValue, limit 
 function renderColumns(container, entries, labelKey, valueKey, formatValue, labelEvery = 1, tickFmt = null) {
   container.innerHTML = "";
   if (!entries || !entries.length) {
-    container.innerHTML = '<p class="muted small">Nothing yet.</p>';
+    container.innerHTML = `<p class="muted small">${esc(t("browse.nothing"))}</p>`;
     return;
   }
   const max = Math.max(...entries.map((e) => e[valueKey])) || 1;
@@ -451,7 +451,7 @@ async function openStatsModal(days) {
   try {
     stats = await api("GET", "/api/stats" + (days ? `?days=${days}` : ""));
   } catch (e) {
-    $("#stats-tiles").innerHTML = `<p class="muted small">Failed to load stats: ${esc(e.message)}</p>`;
+    $("#stats-tiles").innerHTML = `<p class="muted small">${esc(t("stats.load_failed", { error: e.message }))}</p>`;
     return;
   }
 
@@ -460,13 +460,13 @@ async function openStatsModal(days) {
   const successRate = attempts ? ((sc.downloaded || 0) / attempts) * 100 : null;
   const tiles = $("#stats-tiles");
   tiles.innerHTML = `
-    <div class="stats-tile"><div class="stats-tile-value">${formatNum(stats.total_tracks)}</div><div class="stats-tile-label">Tracks</div></div>
-    <div class="stats-tile"><div class="stats-tile-value">${formatNum(stats.total_releases)}</div><div class="stats-tile-label">Releases</div></div>
-    <div class="stats-tile"><div class="stats-tile-value">${formatNum(stats.total_labels)}</div><div class="stats-tile-label">Labels</div></div>
-    <div class="stats-tile"><div class="stats-tile-value">${formatNum(stats.total_artists)}</div><div class="stats-tile-label">Artists</div></div>
-    <div class="stats-tile"><div class="stats-tile-value">${formatBytes(stats.total_bytes)}</div><div class="stats-tile-label">Downloaded</div></div>
-    <div class="stats-tile"><div class="stats-tile-value">${successRate === null ? "—" : successRate.toFixed(1) + "%"}</div><div class="stats-tile-label">Success rate</div></div>
-    <div class="stats-tile"><div class="stats-tile-value">${formatNum(sc.failed || 0)}</div><div class="stats-tile-label">Failed</div></div>
+    <div class="stats-tile"><div class="stats-tile-value">${formatNum(stats.total_tracks)}</div><div class="stats-tile-label">${esc(t("stats.tile_tracks"))}</div></div>
+    <div class="stats-tile"><div class="stats-tile-value">${formatNum(stats.total_releases)}</div><div class="stats-tile-label">${esc(t("stats.tile_releases"))}</div></div>
+    <div class="stats-tile"><div class="stats-tile-value">${formatNum(stats.total_labels)}</div><div class="stats-tile-label">${esc(t("stats.tile_labels"))}</div></div>
+    <div class="stats-tile"><div class="stats-tile-value">${formatNum(stats.total_artists)}</div><div class="stats-tile-label">${esc(t("stats.tile_artists"))}</div></div>
+    <div class="stats-tile"><div class="stats-tile-value">${formatBytes(stats.total_bytes)}</div><div class="stats-tile-label">${esc(t("stats.tile_downloaded"))}</div></div>
+    <div class="stats-tile"><div class="stats-tile-value">${successRate === null ? "—" : successRate.toFixed(1) + "%"}</div><div class="stats-tile-label">${esc(t("stats.tile_success"))}</div></div>
+    <div class="stats-tile"><div class="stats-tile-value">${formatNum(sc.failed || 0)}</div><div class="stats-tile-label">${esc(t("stats.tile_failed"))}</div></div>
   `;
 
   renderHBars($("#stats-genres"), stats.genres, "name", "count");
@@ -491,11 +491,11 @@ function renderWizardResults(payload) {
     selectedSubgenres: new Set(),
     selectedArtists: new Set(),
   };
-  $("#wizard-title").textContent = "Filter this catalogue";
+  $("#wizard-title").textContent = t("wizard.filter_title");
   $("#wizard-scanning").classList.add("hidden");
   $("#wizard-results").classList.remove("hidden");
   const bpm = payload.bpm_max ? ` · BPM ${payload.bpm_min}–${payload.bpm_max}` : "";
-  $("#wizard-summary").textContent = `${payload.total} tracks scanned${bpm}. Select genres/subgenres/artists to keep — leave empty for "all".`;
+  $("#wizard-summary").textContent = t("wizard.summary", { total: payload.total, bpm });
   chipList($("#wizard-genres"), payload.genres, state.wizardScan.selectedGenres);
   chipList($("#wizard-subgenres"), payload.subgenres, state.wizardScan.selectedSubgenres);
   chipList($("#wizard-artists"), payload.artists, state.wizardScan.selectedArtists);
@@ -524,7 +524,7 @@ async function confirmWizard(bypass) {
 
 function startWizardBrowse(url) {
   state.browse = { url, page: 1, selected: new Map() };
-  $("#wizard-title").textContent = "Browse & pick releases";
+  $("#wizard-title").textContent = t("wizard.browse_title");
   $("#wizard-scope").classList.add("hidden");
   $("#wizard-browse").classList.remove("hidden");
   loadBrowsePage(1);
@@ -532,14 +532,14 @@ function startWizardBrowse(url) {
 
 async function loadBrowsePage(page) {
   const grid = $("#wizard-browse-grid");
-  $("#wizard-browse-status").textContent = "Loading…";
+  $("#wizard-browse-status").textContent = t("browse.loading");
   grid.innerHTML = "";
   try {
     const data = await api("POST", "/api/browse", { url: state.browse.url, page });
     state.browse.page = data.page;
     $("#wizard-browse-status").textContent =
-      `${data.count} ${data.kind} in this catalogue — tap to select the ones you want.`;
-    $("#wizard-browse-page").textContent = `Page ${data.page}`;
+      t("browse.tap_select", { count: data.count, kind: data.kind });
+    $("#wizard-browse-page").textContent = t("browse.page", { page: data.page });
     $("#wizard-browse-prev").disabled = !data.has_prev;
     $("#wizard-browse-next").disabled = !data.has_next;
     data.items.forEach((it) => {
@@ -567,15 +567,15 @@ async function loadBrowsePage(page) {
     });
     updateBrowseSelCount();
   } catch (e) {
-    $("#wizard-browse-status").textContent = `Failed to load: ${e.message}`;
+    $("#wizard-browse-status").textContent = t("wizard.browse_failed", { error: e.message });
   }
 }
 
 function updateBrowseSelCount() {
   const n = state.browse.selected.size;
-  $("#wizard-browse-selcount").textContent = `${n} selected`;
+  $("#wizard-browse-selcount").textContent = t("browse.selected", { count: n });
   $("#wizard-browse-add").disabled = n === 0;
-  $("#wizard-browse-add").textContent = n ? `Add ${n} to queue` : "Add selected to queue";
+  $("#wizard-browse-add").textContent = n ? t("browse.add_n", { count: n }) : t("browse.add_selected");
 }
 
 async function addBrowseSelected() {
@@ -588,7 +588,7 @@ async function addBrowseSelected() {
       const data = await api("POST", "/api/queue", { input: url });
       if (data.added) { state.queue.push(data.added); added++; }
     } catch (e) {
-      showToast(`Failed to add one release: ${e.message}`, "error");
+      showToast(t("wizard.add_one_failed", { error: e.message }), "error");
     }
   }
   // drop the original label/artist item — we cherry-picked instead of queuing it whole
@@ -601,22 +601,22 @@ async function addBrowseSelected() {
   }
   renderQueue();
   $("#wizard-modal").classList.add("hidden");
-  showToast(`Added ${added} release(s) to the queue.`, "success");
+  showToast(t("wizard.added_releases", { count: added }), "success");
 }
 
 // ---- faceted filter (BPM / genre / sub-genre / artists), Beatport-style ----
 
 async function startWizardFilter(url) {
   state.filter = { url, page: 1, selected: new Map(), selectedArtists: new Set() };
-  $("#wizard-title").textContent = "Filter by BPM / genre / artist";
+  $("#wizard-title").textContent = t("wizard.filter_live");
   $("#wizard-scope").classList.add("hidden");
   $("#wizard-filter").classList.remove("hidden");
   $("#filter-artists-wrap").classList.add("hidden");
   $("#filter-grid").innerHTML = "";
-  $("#filter-status").textContent = "Set BPM and/or genre, then Apply.";
+  $("#filter-status").textContent = t("filter.prompt");
   $("#filter-bpm-min").value = "";
   $("#filter-bpm-max").value = "";
-  $("#filter-subgenre").innerHTML = '<option value="">Any sub-genre</option>';
+  $("#filter-subgenre").innerHTML = `<option value="">${esc(t("filter.any_subgenre"))}</option>`;
   updateFilterSelCount();
   // populate genres once
   const gsel = $("#filter-genre");
@@ -637,7 +637,7 @@ async function startWizardFilter(url) {
 async function onGenreChange() {
   const gid = $("#filter-genre").value;
   const ssel = $("#filter-subgenre");
-  ssel.innerHTML = '<option value="">Any sub-genre</option>';
+  ssel.innerHTML = `<option value="">${esc(t("filter.any_subgenre"))}</option>`;
   if (!gid) return;
   try {
     const data = await api("GET", `/api/subgenres/${gid}`);
@@ -667,21 +667,21 @@ function filterPayload(page, wantFacet) {
 
 async function applyFilter(page = 1, wantFacet = true) {
   const f = state.filter;
-  $("#filter-status").textContent = "Filtering…";
+  $("#filter-status").textContent = t("filter.filtering");
   $("#filter-grid").innerHTML = "";
   try {
     const data = await api("POST", "/api/filter", filterPayload(page, wantFacet));
     f.page = data.page;
-    $("#filter-status").textContent = `${data.count} matching track(s).` +
-      (data.count > 100 ? " Showing 100 per page." : "");
-    $("#filter-page").textContent = `Page ${data.page}`;
+    $("#filter-status").textContent = t("filter.matching", { count: data.count }) +
+      (data.count > 100 ? t("browse.showing_100") : "");
+    $("#filter-page").textContent = t("browse.page", { page: data.page });
     $("#filter-prev").disabled = !data.has_prev;
     $("#filter-next").disabled = !data.has_next;
     $("#filter-selectall").checked = false;
     if (data.artists) renderFilterArtists(data.artists);
     renderFilterGrid(data.tracks);
   } catch (e) {
-    $("#filter-status").textContent = `Filter failed: ${e.message}`;
+    $("#filter-status").textContent = t("filter.failed", { error: e.message });
   }
 }
 
@@ -709,25 +709,25 @@ function renderFilterGrid(tracks) {
   const grid = $("#filter-grid");
   grid.innerHTML = "";
   state.filter._rendered = tracks;
-  tracks.forEach((t) => {
-    const sel = state.filter.selected.has(t.url);
+  tracks.forEach((tr) => {
+    const sel = state.filter.selected.has(tr.url);
     const card = document.createElement("div");
     card.className = "browse-card" + (sel ? " selected" : "");
-    const meta = [t.bpm ? `${t.bpm} BPM` : "", t.key, t.genre, t.length, t.year].filter(Boolean).join(" · ");
+    const meta = [tr.bpm ? `${tr.bpm} BPM` : "", tr.key, tr.genre, tr.length, tr.year].filter(Boolean).join(" · ");
     card.innerHTML = `
-      ${t.cover ? `<img class="browse-cover" src="${esc(t.cover)}" loading="lazy">`
+      ${tr.cover ? `<img class="browse-cover" src="${esc(tr.cover)}" loading="lazy">`
                 : `<div class="browse-cover placeholder"></div>`}
       <div class="browse-info">
-        <div class="browse-title">${esc(t.name)}</div>
-        <div class="browse-artist muted small">${artistLinksHtml(t)}</div>
+        <div class="browse-title">${esc(tr.name)}</div>
+        <div class="browse-artist muted small">${artistLinksHtml(tr)}</div>
         <div class="browse-meta muted small">${esc(meta)}</div>
       </div>
       <div class="browse-check">✓</div>`;
-    if (t.preview) card.appendChild(makePreviewBtn(t.preview));
+    if (tr.preview) card.appendChild(makePreviewBtn(tr.preview));
     wireCatalogueLinks(card);
     card.addEventListener("click", () => {
-      if (state.filter.selected.has(t.url)) state.filter.selected.delete(t.url);
-      else state.filter.selected.set(t.url, t.name);
+      if (state.filter.selected.has(tr.url)) state.filter.selected.delete(tr.url);
+      else state.filter.selected.set(tr.url, tr.name);
       card.classList.toggle("selected");
       updateFilterSelCount();
     });
@@ -737,17 +737,17 @@ function renderFilterGrid(tracks) {
 
 function updateFilterSelCount() {
   const n = state.filter.selected.size;
-  $("#filter-selcount").textContent = `${n} selected`;
+  $("#filter-selcount").textContent = t("browse.selected", { count: n });
   $("#filter-add").disabled = n === 0;
-  $("#filter-add").textContent = n ? `Add ${n} to queue` : "Add selected to queue";
+  $("#filter-add").textContent = n ? t("browse.add_n", { count: n }) : t("browse.add_selected");
 }
 
 function toggleSelectPage(checked) {
   const tracks = state.filter._rendered || [];
   const cards = $("#filter-grid").querySelectorAll(".browse-card");
-  tracks.forEach((t, i) => {
-    if (checked) state.filter.selected.set(t.url, t.name);
-    else state.filter.selected.delete(t.url);
+  tracks.forEach((tr, i) => {
+    if (checked) state.filter.selected.set(tr.url, tr.name);
+    else state.filter.selected.delete(tr.url);
     if (cards[i]) cards[i].classList.toggle("selected", checked);
   });
   updateFilterSelCount();
@@ -762,7 +762,7 @@ async function addFilterSelected() {
     try {
       const data = await api("POST", "/api/queue", { input: url });
       if (data.added) { state.queue.push(data.added); added++; }
-    } catch (e) { showToast(`Failed to add a track: ${e.message}`, "error"); }
+    } catch (e) { showToast(t("filter.add_track_failed", { error: e.message }), "error"); }
   }
   const idx = state.wizardQueueIndex;
   if (idx !== null && state.queue[idx] && state.queue[idx].needs_wizard) {
@@ -770,7 +770,7 @@ async function addFilterSelected() {
   }
   renderQueue();
   $("#wizard-modal").classList.add("hidden");
-  showToast(`Added ${added} track(s) to the queue.`, "success");
+  showToast(t("filter.added_tracks", { count: added }), "success");
 }
 
 // ---- activity / downloading ----
@@ -904,7 +904,7 @@ function handleEvent(ev) {
       $("#wizard-scan-status").textContent = ev.message;
       break;
     case "scan_error":
-      $("#wizard-scan-status").textContent = `Scan failed: ${ev.error}`;
+      $("#wizard-scan-status").textContent = t("wizard.scan_failed", { error: ev.error });
       break;
     case "scan_done":
       renderWizardResults(ev);
@@ -919,7 +919,7 @@ function handleEvent(ev) {
       renderQueue();
       break;
     case "item_start":
-      showToast(`Starting "${ev.name}"…`);
+      showToast(t("activity.starting", { name: ev.name }));
       break;
     case "track_start":
     case "track_progress":
@@ -932,13 +932,13 @@ function handleEvent(ev) {
       if (state.status) state.status.downloading = false;
       refreshStatus();
       if (ev.stopped) {
-        showToast(`Stopped — ${ev.downloaded} downloaded, ${ev.skipped} skipped before stopping.`);
+        showToast(t("activity.stopped", { downloaded: ev.downloaded, skipped: ev.skipped }));
       } else {
-        showToast(`Finished — ${ev.downloaded} downloaded, ${ev.skipped} skipped, ${ev.failed} failed.`, ev.failed ? "error" : "success");
+        showToast(t("activity.finished", { downloaded: ev.downloaded, skipped: ev.skipped, failed: ev.failed }), ev.failed ? "error" : "success");
       }
       state.failedTracks = ev.failed_tracks || [];
       $("#retry-failed-btn").classList.toggle("hidden", state.failedTracks.length === 0);
-      $("#retry-failed-btn").textContent = `Retry ${state.failedTracks.length} failed`;
+      $("#retry-failed-btn").textContent = t("activity.retry_n", { count: state.failedTracks.length });
       break;
     case "settings_saved":
       break;
@@ -946,31 +946,31 @@ function handleEvent(ev) {
       $("#art-recheck-status").textContent = ev.message;
       break;
     case "art_recheck_error":
-      $("#art-recheck-status").textContent = `Failed: ${ev.error}`;
-      showToast(`Art recheck failed: ${ev.error}`, "error");
+      $("#art-recheck-status").textContent = t("maint.art_failed", { error: ev.error });
+      showToast(t("maint.art_failed_toast", { error: ev.error }), "error");
       break;
     case "art_recheck_done":
       $("#art-recheck-status").textContent =
-        `Done — ${ev.files_fixed} file(s) fixed across ${ev.releases_fixed}/${ev.releases_checked} release(s). ` +
-        `${ev.already_ok} already had art, ${ev.no_id_tag} file(s) predate ID tagging, ${ev.failed} failed.`;
-      showToast(`Art recheck complete — ${ev.files_fixed} file(s) fixed.`, ev.failed ? "error" : "success");
+        t("activity.art_done_full", { files: ev.files_fixed, fixed: ev.releases_fixed, checked: ev.releases_checked,
+                                      ok: ev.already_ok, noid: ev.no_id_tag, failed: ev.failed });
+      showToast(t("maint.art_done", { count: ev.files_fixed }), ev.failed ? "error" : "success");
       break;
     case "watch_check_start":
-      $("#watch-status").textContent = `Checking ${ev.count} watched item(s)...`;
+      $("#watch-status").textContent = t("watch.checking_n", { count: ev.count });
       break;
     case "watch_check_status":
       $("#watch-status").textContent = ev.message;
       break;
     case "watch_check_error":
-      $("#watch-status").textContent = `Failed: ${ev.error}`;
+      $("#watch-status").textContent = t("watch.failed", { error: ev.error });
       break;
     case "watch_check_done": {
-      const pendingNote = ev.newly_pending ? ` ${ev.newly_pending} pre-release(s) spotted, will download once released.` : "";
+      const pendingNote = ev.newly_pending ? t("watch.pending_note", { count: ev.newly_pending }) : "";
       if (ev.new_releases > 0) {
-        $("#watch-status").textContent = `Found ${ev.new_releases} new release(s), ${ev.new_tracks} track(s) downloaded.${pendingNote}`;
-        showToast(`Watch check: ${ev.new_releases} new release(s) downloaded.`, "success");
+        $("#watch-status").textContent = t("watch.found", { releases: ev.new_releases, tracks: ev.new_tracks, pending: pendingNote });
+        showToast(t("watch.found_toast", { releases: ev.new_releases }), "success");
       } else {
-        $("#watch-status").textContent = `No new releases found.${pendingNote}`;
+        $("#watch-status").textContent = t("watch.none_found", { pending: pendingNote });
       }
       refreshWatchList();
       break;
@@ -981,16 +981,16 @@ function handleEvent(ev) {
       refreshWatchList();
       break;
     case "label_updated": {
-      const note = ev.newly_pending ? ` ${ev.newly_pending} pre-release(s) spotted.` : "";
+      const note = ev.newly_pending ? t("watch.pending_note_short", { count: ev.newly_pending }) : "";
       if (ev.error) {
-        showToast(`${ev.name}: update failed — ${ev.error}`, "error");
+        showToast(t("watch.update_failed", { name: ev.name, error: ev.error }), "error");
       } else if (ev.new_releases > 0) {
         $("#watch-status").textContent =
-          `${ev.name}: ${ev.new_releases} new release(s), ${ev.new_tracks} track(s) downloaded — now held to ${ev.synced_through}.${note}`;
-        showToast(`${ev.name}: ${ev.new_releases} new release(s) downloaded.`, "success");
+          t("watch.label_updated", { name: ev.name, releases: ev.new_releases, tracks: ev.new_tracks, through: ev.synced_through, note });
+        showToast(t("watch.new_downloaded", { name: ev.name, releases: ev.new_releases }), "success");
       } else {
-        $("#watch-status").textContent = `${ev.name}: already up to date.${note}`;
-        showToast(`${ev.name} is already up to date.`, "success");
+        $("#watch-status").textContent = t("watch.up_to_date", { name: ev.name, note });
+        showToast(t("watch.up_to_date_toast", { name: ev.name }), "success");
       }
       refreshWatchList();
       break;
@@ -1035,11 +1035,11 @@ function renderWatchList(labels, artists) {
   el.innerHTML = "";
   $("#watch-count").textContent = labels.length + artists.length;
   if (!labels.length && !artists.length) {
-    el.innerHTML = '<p class="muted small">Not watching any labels or artists yet — paste one above and every new release lands automatically.</p>';
+    el.innerHTML = `<p class="muted small">${esc(t("watch.empty"))}</p>`;
     return;
   }
-  renderWatchSection(el, "Labels", "label", labels);
-  renderWatchSection(el, "Artists", "artist", artists);
+  renderWatchSection(el, t("watchsec.labels"), "label", labels);
+  renderWatchSection(el, t("watchsec.artists"), "artist", artists);
 }
 
 function renderWatchSection(el, heading, kind, entries) {
@@ -1054,9 +1054,12 @@ function renderWatchSection(el, heading, kind, entries) {
     row.className = "chip";
     row.style.cssText = "cursor:default;flex-direction:column;align-items:stretch;gap:4px;position:relative;";
     const pending = w.pending_releases || [];
-    const noun = kind === "artist" ? "track" : "pre-release";
+    const many = pending.length > 1;
+    const noun = kind === "artist"
+      ? t(many ? "watchsec.noun_tracks" : "watchsec.noun_track")
+      : t(many ? "watchsec.noun_prereleases" : "watchsec.noun_prerelease");
     const pendingText = pending.length
-      ? `${pending.length} upcoming ${noun}${pending.length > 1 ? "s" : ""}: ` +
+      ? t("watchsec.upcoming", { count: pending.length, noun }) +
         pending.map((p) => `${p.release_name} (${p.expected_date})`).join(", ")
       : "";
     // Two different marks, and the difference matters. A full download means the
@@ -1064,10 +1067,10 @@ function renderWatchSection(el, heading, kind, entries) {
     // only means we looked that far. Show whichever is authoritative.
     const sync = w.sync || null;
     const mark = kind === "artist" ? "" : sync && sync.synced_through
-      ? `full catalogue to ${sync.synced_through}`
+      ? t("watchsec.full_to", { through: sync.synced_through })
       : w.last_publish_date
-      ? `checked to ${w.last_publish_date}`
-      : "not checked yet";
+      ? t("watchsec.checked_to", { date: w.last_publish_date })
+      : t("watchsec.not_checked");
     row.innerHTML = `
       <div style="display:flex;align-items:center;gap:8px;">
         <span style="flex:1;">${esc(w.name)}</span>
@@ -1079,12 +1082,12 @@ function renderWatchSection(el, heading, kind, entries) {
       const range = document.createElement("div");
       range.className = "watch-range";
       range.innerHTML = `
-        <label>From<input type="date" class="watch-from" value="${esc(w.watch_from || "")}"></label>
-        <label>To<input type="date" class="watch-to" value="${esc(w.watch_to || "")}"></label>
-        <label class="watch-rescan" title="Re-examine releases already marked as seen. Needed when widening the range backwards.">
-          <input type="checkbox" class="watch-rescan-box"> re-scan
+        <label>${esc(t("watchsec.from"))}<input type="date" class="watch-from" value="${esc(w.watch_from || "")}"></label>
+        <label>${esc(t("watchsec.to"))}<input type="date" class="watch-to" value="${esc(w.watch_to || "")}"></label>
+        <label class="watch-rescan" title="${esc(t("watch.rescan_title"))}">
+          <input type="checkbox" class="watch-rescan-box"> ${esc(t("watchsec.rescan"))}
         </label>
-        <button class="btn ghost small watch-range-save">Save &amp; check now</button>
+        <button class="btn ghost small watch-range-save">${esc(t("watchsec.save_check"))}</button>
       `;
       range.querySelector(".watch-range-save").addEventListener("click", (ev) =>
         saveWatchRange(idx, range, ev.target));
@@ -1094,13 +1097,14 @@ function renderWatchSection(el, heading, kind, entries) {
       const upd = document.createElement("button");
       upd.className = "btn ghost small";
       upd.style.cssText = "align-self:flex-start;margin-top:2px;";
-      upd.textContent = "Update to latest";
-      upd.title = `Grab everything Beatport has published since ${sync.synced_through}`;
+      upd.textContent = t("watch.update_latest");
+      upd.title = t("watch.update_latest_title", { through: sync.synced_through });
       upd.addEventListener("click", () => updateLabelToLatest(w.url, upd));
       row.appendChild(upd);
     }
     const removeBtn = document.createElement("button");
     removeBtn.className = "card-remove";
+    removeBtn.title = t("watchsec.remove");
     removeBtn.style.cssText = "position:absolute;top:4px;right:4px;";
     removeBtn.innerHTML = "&times;";
     removeBtn.addEventListener("click", async () => {
@@ -1116,7 +1120,7 @@ async function saveWatchRange(index, root, btn) {
   const was = btn.textContent;
   const rescan = root.querySelector(".watch-rescan-box").checked;
   btn.disabled = true;
-  btn.textContent = "Saving…";
+  btn.textContent = t("watch.saving");
   try {
     const res = await api("PATCH", `/api/watch/label/${index}/range`, {
       watch_from: root.querySelector(".watch-from").value,
@@ -1124,16 +1128,16 @@ async function saveWatchRange(index, root, btn) {
       rescan,
       check_now: true,
     });
-    const cleared = rescan ? `${res.baselines_cleared} releases re-opened, ` : "";
+    const cleared = rescan ? t("watchsec.reopened", { count: res.baselines_cleared }) : "";
     showToast(
       res.check_started
-        ? `Range saved — ${cleared}checking this label now.`
-        : `Range saved, ${cleared}but a check is already running; it runs on the next one.`,
+        ? t("watchsec.range_saved", { cleared })
+        : t("watchsec.range_saved_busy", { cleared }),
       "success",
     );
     renderWatchList(res.watched_labels || [], res.watched_artists || []);
   } catch (e) {
-    showToast(`Could not save range: ${e.message}`, "error");
+    showToast(t("watch.range_failed", { error: e.message }), "error");
   } finally {
     btn.disabled = false;
     btn.textContent = was;
@@ -1143,12 +1147,12 @@ async function saveWatchRange(index, root, btn) {
 async function updateLabelToLatest(url, btn) {
   const was = btn.textContent;
   btn.disabled = true;
-  btn.textContent = "Updating…";
+  btn.textContent = t("watch.updating");
   try {
     const res = await api("POST", "/api/label/update-latest", { url });
-    showToast(`Checking for releases published since ${res.since}…`, "success");
+    showToast(t("watch.since", { since: res.since }), "success");
   } catch (e) {
-    showToast(`Update failed: ${e.message}`, "error");
+    showToast(t("watch.update_error", { error: e.message }), "error");
   } finally {
     btn.disabled = false;
     btn.textContent = was;
@@ -1160,10 +1164,10 @@ async function saveSettingsModal() {
   try {
     await api("POST", "/api/settings", formToPayload($("#settings-form")));
     $("#settings-modal").classList.add("hidden");
-    showToast("Settings saved.", "success");
+    showToast(t("settings.saved"), "success");
     await refreshStatus();
   } catch (e) {
-    showToast(`Failed to save: ${e.message}`, "error");
+    showToast(t("settings.save_failed", { error: e.message }), "error");
   }
 }
 
@@ -1203,7 +1207,7 @@ function wireEvents() {
     $("#stop-btn").disabled = true;
     try {
       await api("POST", "/api/download/stop");
-      showToast("Stopping — finishing the current track, no new ones will start…");
+      showToast(t("activity.stopping"));
     } catch (e) {
       showToast(e.message, "error");
     } finally {
@@ -1217,24 +1221,24 @@ function wireEvents() {
       state.queue = data.queue;
       renderQueue();
     } catch (e) {
-      showToast(`Failed to clear queue: ${e.message}`, "error");
+      showToast(t("queue.clear_failed", { error: e.message }), "error");
     }
   });
   $("#retry-failed-btn").addEventListener("click", async () => {
     const tracks = state.failedTracks;
     $("#retry-failed-btn").classList.add("hidden");
     let added = 0;
-    for (const t of tracks) {
+    for (const tr of tracks) {
       try {
-        const data = await api("POST", "/api/queue", { input: t.url });
+        const data = await api("POST", "/api/queue", { input: tr.url });
         state.queue.push(data.added);
         added++;
       } catch (e) {
-        showToast(`Failed to re-queue "${t.name}": ${e.message}`, "error");
+        showToast(t("activity.requeue_failed", { name: tr.name, error: e.message }), "error");
       }
     }
     renderQueue();
-    if (added) showToast(`Re-queued ${added} failed track(s) — press Start downloading when ready.`, "success");
+    if (added) showToast(t("activity.requeued", { count: added }), "success");
   });
   $("#retry-login-btn").addEventListener("click", async () => {
     try {
@@ -1281,7 +1285,7 @@ function wireEvents() {
   $("#wizard-bypass-btn").addEventListener("click", () => confirmWizard(true));
   $("#wizard-confirm-btn").addEventListener("click", () => confirmWizard(false));
   $("#recheck-art-btn").addEventListener("click", async () => {
-    $("#art-recheck-status").textContent = "Starting…";
+    $("#art-recheck-status").textContent = t("maint.starting");
     try {
       await api("POST", "/api/art/recheck", { only_missing: $("#art-only-missing").checked });
     } catch (e) {
@@ -1289,14 +1293,14 @@ function wireEvents() {
     }
   });
   $("#verify-library-btn").addEventListener("click", async () => {
-    $("#verify-library-status").textContent = "Checking…";
+    $("#verify-library-status").textContent = t("history.checking");
     $("#remove-missing-btn").classList.add("hidden");
     try {
       const r = await api("GET", "/api/history/verify");
       $("#verify-library-status").textContent =
-        `${r.total_checked} tracked — ${r.ok} found on disk, ${r.missing} missing, ${r.no_path_recorded} predate file-path tracking.`;
+        t("history.verify_summary", { total: r.total_checked, ok: r.ok, missing: r.missing, nopath: r.no_path_recorded });
       if (r.missing > 0) {
-        $("#remove-missing-btn").textContent = `Remove ${r.missing} missing entries`;
+        $("#remove-missing-btn").textContent = t("history.remove_missing_n", { count: r.missing });
         $("#remove-missing-btn").classList.remove("hidden");
       }
     } catch (e) {
@@ -1304,20 +1308,20 @@ function wireEvents() {
     }
   });
   $("#remove-missing-btn").addEventListener("click", async () => {
-    if (!confirm("Remove history entries for tracks whose files are gone? This can't be undone.")) return;
+    if (!confirm(t("history.confirm_remove"))) return;
     try {
       const r = await api("POST", "/api/history/remove-missing");
-      $("#verify-library-status").textContent = `Removed ${r.removed} entries.`;
+      $("#verify-library-status").textContent = t("history.removed", { count: r.removed });
       $("#remove-missing-btn").classList.add("hidden");
     } catch (e) {
       $("#verify-library-status").textContent = e.message;
     }
   });
   $("#clear-history-btn").addEventListener("click", async () => {
-    if (!confirm("Wipe the entire download history? Dedup will no longer know about anything downloaded before this point. This can't be undone.")) return;
+    if (!confirm(t("history.confirm_clear"))) return;
     try {
       const r = await api("POST", "/api/history/clear");
-      showToast(`Cleared ${r.removed} history entries.`, "success");
+      showToast(t("history.cleared", { count: r.removed }), "success");
       $("#verify-library-status").textContent = "";
       $("#remove-missing-btn").classList.add("hidden");
     } catch (e) {
@@ -1332,13 +1336,13 @@ function wireEvents() {
       const data = await api("POST", "/api/watch", { url });
       renderWatchList(data.watched_labels || [], data.watched_artists || []);
       input.value = "";
-      $("#watch-status").textContent = "Watching.";
+      $("#watch-status").textContent = t("watch.watching");
     } catch (e) {
       $("#watch-status").textContent = e.message;
     }
   });
   $("#watch-check-now-btn").addEventListener("click", async () => {
-    $("#watch-status").textContent = "Checking now…";
+    $("#watch-status").textContent = t("watch.checking_now");
     try {
       await api("POST", "/api/watch/check-now");
     } catch (e) {
@@ -1417,7 +1421,7 @@ async function openCatalogue(url, title) {
 async function toggleExplore() {
   const body = $("#explore-body");
   const open = !body.classList.toggle("hidden");
-  $("#explore-toggle").textContent = open ? "Hide ▴" : "Browse Beatport ▾";
+  $("#explore-toggle").textContent = open ? t("explore.hide") : t("explore.browse");
   localStorage.setItem("exploreOpen", open ? "1" : "");
   if (open) {
     await loadExploreGenres();
@@ -1447,7 +1451,7 @@ async function loadExploreGenres() {
 async function loadExplore(page) {
   const ex = state.explore;
   const genre = $("#explore-genre").value;
-  $("#explore-status").textContent = "Loading…";
+  $("#explore-status").textContent = t("browse.loading");
   try {
     const bmin = parseInt($("#explore-bpm-min").value, 10);
     const bmax = parseInt($("#explore-bpm-max").value, 10);
@@ -1462,9 +1466,10 @@ async function loadExplore(page) {
     ex.page = data.page;
     ex.kind = data.kind;
     renderExploreGrid(data.items);
-    const label = { top100: "in the Top 100", tracks: "new tracks", releases: "new releases", charts: "DJ charts" }[ex.section] || "";
+    const label = { top100: t("explore.in_top100"), tracks: t("explore.new_tracks").toLowerCase(),
+                    releases: t("explore.new_releases").toLowerCase(), charts: t("explore.dj_charts") }[ex.section] || "";
     $("#explore-status").textContent = `${data.count} ${label}`;
-    $("#explore-page").textContent = (data.has_prev || data.has_next) ? `page ${data.page}` : "";
+    $("#explore-page").textContent = (data.has_prev || data.has_next) ? t("browse.page_lower", { page: data.page }) : "";
     $("#explore-prev").disabled = !data.has_prev;
     $("#explore-next").disabled = !data.has_next;
     $("#explore-selectall").checked = false;
@@ -1477,7 +1482,7 @@ function exploreMeta(it) {
   if (state.explore.kind === "tracks") {
     return [it.bpm ? `${it.bpm} BPM` : "", it.key, it.genre, it.length, it.year].filter(Boolean).join(" · ");
   }
-  const count = it.track_count ? `${it.track_count} track${it.track_count === 1 ? "" : "s"}` : "";
+  const count = it.track_count ? t("explore.n_tracks", { count: it.track_count }) : "";
   return [it.catno, count, it.date].filter(Boolean).join(" · ");
 }
 
@@ -1513,9 +1518,9 @@ function renderExploreGrid(items) {
 
 function updateExploreSelCount() {
   const n = state.explore.selected.size;
-  $("#explore-selcount").textContent = `${n} selected`;
+  $("#explore-selcount").textContent = t("browse.selected", { count: n });
   $("#explore-add").disabled = n === 0;
-  $("#explore-add").textContent = n ? `Add ${n} to queue` : "Add selected to queue";
+  $("#explore-add").textContent = n ? t("browse.add_n", { count: n }) : t("browse.add_selected");
 }
 
 function toggleExploreSelectPage(checked) {
@@ -1539,17 +1544,30 @@ async function addExploreSelected() {
       const data = await api("POST", "/api/queue", { input: url });
       if (data.added) { state.queue.push(data.added); added++; }
     } catch (e) {
-      showToast(`Failed to add "${name}": ${e.message}`, "error");
+      showToast(t("browse.add_failed", { name, error: e.message }), "error");
     }
   }
   state.explore.selected.clear();
   updateExploreSelCount();
   $("#explore-grid").querySelectorAll(".browse-card.selected").forEach((c) => c.classList.remove("selected"));
   renderQueue();
-  if (added) showToast(`Added ${added} item(s) to queue — press Start downloading when ready.`, "success");
+  if (added) showToast(t("browse.added_items", { count: added }), "success");
 }
 
+// Everything the scripts draw themselves has to be redrawn when the language
+// changes — applyI18n() only reaches static markup carrying data-i18n. Re-render
+// the surfaces that are always live; the modals rebuild their own contents from
+// scratch each time they open, so they need nothing here.
+onLangChange(() => {
+  buildLangSwitch();
+  if (state.status) render();       // connection pill + queue
+  updateQueueSelCount();
+  refreshWatchList();
+});
+
 (async function main() {
+  applyI18n();
+  buildLangSwitch();
   wireEvents();
   connectEvents();
   await refreshStatus();

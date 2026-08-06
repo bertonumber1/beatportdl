@@ -167,17 +167,19 @@ from fastapi.responses import HTMLResponse
 # Cache-bust static assets per deploy: browsers happily reuse a stale cached
 # app.js/style.css across container rebuilds otherwise (assets have no version
 # in their URLs). Stamp the asset URLs with the files' mtime at startup.
+_STAMPED_ASSETS = ("app.js", "style.css", "i18n.js")
 _ASSET_STAMP = str(int(max(
-    (STATIC_DIR / "app.js").stat().st_mtime,
-    (STATIC_DIR / "style.css").stat().st_mtime,
+    (STATIC_DIR / name).stat().st_mtime for name in _STAMPED_ASSETS
 )))
 
 
 @app.get("/")
 def index() -> HTMLResponse:
     html = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
-    html = html.replace('href="/static/style.css"', f'href="/static/style.css?v={_ASSET_STAMP}"')
-    html = html.replace('src="/static/app.js"', f'src="/static/app.js?v={_ASSET_STAMP}"')
+    for name in _STAMPED_ASSETS:
+        attr = "href" if name.endswith(".css") else "src"
+        html = html.replace(f'{attr}="/static/{name}"',
+                            f'{attr}="/static/{name}?v={_ASSET_STAMP}"')
     return HTMLResponse(html)
 
 

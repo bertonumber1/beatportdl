@@ -130,6 +130,26 @@ body::before {
 .top-btn:hover { border-color: var(--accent); color: var(--text); }
 .top-btn svg { flex: none; }
 
+/* Language flags. Deliberately the plainest control in the bar: a visitor who
+   cannot read the rest of the page has to be able to spot it, so the flags carry
+   the meaning and nothing else competes with them. */
+#lang-switch { display: flex; align-items: center; gap: 6px; }
+.lang-btn {
+  display: inline-flex; padding: 0; cursor: pointer;
+  width: 30px; height: 20px; border-radius: 4px; overflow: hidden;
+  background: none; border: 1px solid var(--border-light);
+  opacity: .5; transition: opacity .15s, border-color .15s, transform .15s;
+}
+.lang-btn svg { width: 100%; height: 100%; display: block; }
+.lang-btn:hover { opacity: .9; transform: translateY(-1px); }
+.lang-btn.selected { opacity: 1; border-color: var(--accent); }
+.lang-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+@media (max-width: 560px) {
+  .lang-btn { width: 26px; height: 17px; }
+  #topbar-right { gap: 9px; }
+}
+
 .pill {
   display: flex; align-items: center; gap: 8px;
   padding: 6px 12px; border-radius: 999px;
