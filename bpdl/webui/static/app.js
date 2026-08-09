@@ -504,20 +504,32 @@ function renderWizardResults(payload) {
 async function confirmWizard(bypass) {
   const idx = state.wizardQueueIndex;
   if (idx === null) return;
+  // Send the url we were configuring, not just the position: the queue can shift
+  // under an open wizard and the index alone can address the wrong item.
+  const url = (state.queue[idx] && state.queue[idx].url) || $("#wizard-modal").dataset.url || "";
   const payload = bypass
-    ? { bypass: true }
+    ? { bypass: true, url }
     : {
         bypass: false,
+        url,
         genres: Array.from(state.wizardScan.selectedGenres),
         subgenres: Array.from(state.wizardScan.selectedSubgenres),
         artists: Array.from(state.wizardScan.selectedArtists),
         date_from: $("#wizard-date-from").value,
         date_to: $("#wizard-date-to").value,
       };
-  const data = await api("POST", `/api/queue/${idx}/filters`, payload);
-  state.queue[idx] = data.item;
-  renderQueue();
-  $("#wizard-modal").classList.add("hidden");
+  // This used to have no error handling at all. A failed call left the item
+  // needing filters with nothing shown, so "queue everything" looked like it had
+  // worked and Start then refused to run.
+  try {
+    const data = await api("POST", `/api/queue/${idx}/filters`, payload);
+    state.queue[idx] = data.item;
+    renderQueue();
+    $("#wizard-modal").classList.add("hidden");
+  } catch (e) {
+    showToast(t("wizard.set_filters_failed", { error: e.message }), "error");
+    await refreshStatus();
+  }
 }
 
 // ---- browse & pick individual releases ----
@@ -1200,6 +1212,21 @@ function wireEvents() {
     try {
       await api("POST", "/api/download/start");
     } catch (e) {
+      // Everything queued is still waiting on the wizard. Rather than just
+      // refusing, offer the obvious thing: download it as it is, in full.
+      const pending = state.queue.filter((q) => q.needs_wizard);
+      if (pending.length && confirm(t("queue.confirm_as_is", { count: pending.length }))) {
+        try {
+          const data = await api("POST", "/api/queue/bypass_pending");
+          state.queue = data.queue;
+          renderQueue();
+          await api("POST", "/api/download/start");
+          return;
+        } catch (e2) {
+          showToast(e2.message, "error");
+          return;
+        }
+      }
       showToast(e.message, "error");
     }
   });

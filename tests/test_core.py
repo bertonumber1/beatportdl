@@ -734,3 +734,65 @@ def test_check_can_be_limited_to_one_label(monkeypatch):
     # One label checked, not both — a second pass would fetch twice.
     assert len(h.params_used) == 1
     assert h.downloaded == [rel.store_url()]
+
+
+# ---- "download it as is": items stuck waiting on the filter wizard ----------------
+
+
+def test_bypass_pending_unblocks_items_waiting_on_the_wizard():
+    # Regression: a label queued whole (no filters) sat at needs_wizard=True and
+    # /api/download/start refused with "finish choosing filters" — with no action
+    # anywhere that would just download it as it is.
+    from bpdl.webui import server
+
+    server.state.queue = [
+        {"url": "urlA", "name": "Label A", "needs_wizard": True, "filters": None},
+        {"url": "urlB", "name": "Release B", "needs_wizard": False, "filters": None},
+    ]
+    try:
+        with mock.patch.object(server, "_publish_queue", lambda: None):
+            out = server.bypass_pending()
+
+        assert out["unblocked"] == 1
+        assert server.state.queue[0]["needs_wizard"] is False
+        assert server.state.queue[0]["filters"] is None   # unfiltered = the whole thing
+        # the already-ready item is untouched
+        assert server.state.queue[1]["needs_wizard"] is False
+        # and start's guard is now satisfied
+        assert any(not q.get("needs_wizard") for q in server.state.queue)
+    finally:
+        server.state.queue = []
+
+
+def test_set_filters_follows_the_url_when_the_queue_has_shifted():
+    # Regression: the wizard addressed items by POSITION. When the queue shifted
+    # under an open wizard (a finished item is removed by _run_download), the
+    # stale index configured the WRONG item — or 404'd, which the UI never showed,
+    # so the label stayed "needing filters" however often you chose queue-everything.
+    from bpdl.webui import server
+
+    server.state.queue = [
+        {"url": "urlB", "name": "Label B", "needs_wizard": True, "filters": None},
+    ]
+    try:
+        with mock.patch.object(server, "_publish_queue", lambda: None):
+            # The UI opened the wizard when Label B was at index 1; index 0 has
+            # since been removed, so position 1 no longer exists.
+            payload = server.FiltersPayload(bypass=True, url="urlB")
+            out = server.set_filters(1, payload)
+
+        assert out["item"]["url"] == "urlB"
+        assert server.state.queue[0]["needs_wizard"] is False
+    finally:
+        server.state.queue = []
+
+
+def test_set_filters_still_404s_for_a_url_that_is_not_queued():
+    from bpdl.webui import server
+
+    server.state.queue = [{"url": "urlA", "name": "Label A", "needs_wizard": True}]
+    try:
+        with pytest.raises(server.HTTPException):
+            server.set_filters(0, server.FiltersPayload(bypass=True, url="urlGONE"))
+    finally:
+        server.state.queue = []

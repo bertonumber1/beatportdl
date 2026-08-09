@@ -444,19 +444,66 @@ class FiltersPayload(BaseModel):
     date_from: str = ""
     date_to: str = ""
     bypass: bool = False
+    url: str = ""
+
+
+def _resolve_queue_index(index: int, url: str = "") -> int:
+    """Find the queue item the caller actually meant.
+
+    The UI addresses items by position, but positions move: _run_download removes
+    finished items, and an item can be deleted while the wizard is open. A stale
+    index either configured the WRONG item or 404'd — and the 404 was invisible,
+    because the wizard did not check the reply, so the label sat there "needing
+    filters" forever no matter how many times you chose 'queue everything'.
+
+    When the caller tells us which url it was looking at, that wins over position.
+    """
+    if url:
+        if 0 <= index < len(state.queue) and state.queue[index].get("url") == url:
+            return index
+        for i, item in enumerate(state.queue):
+            if item.get("url") == url:
+                return i
+        # Named an item that is no longer queued. Falling back to the position here
+        # would configure whatever has since moved into that slot — the very bug
+        # this function exists to stop.
+        raise HTTPException(404, "no such queue item")
+    if index < 0 or index >= len(state.queue):
+        raise HTTPException(404, "no such queue item")
+    return index
 
 
 @app.post("/api/queue/{index}/filters")
 def set_filters(index: int, payload: FiltersPayload) -> dict:
-    if index < 0 or index >= len(state.queue):
-        raise HTTPException(404, "no such queue item")
+    index = _resolve_queue_index(index, payload.url)
     if payload.bypass:
         state.queue[index]["filters"] = None
     else:
-        state.queue[index]["filters"] = payload.model_dump(exclude={"bypass"})
+        state.queue[index]["filters"] = payload.model_dump(exclude={"bypass", "url"})
     state.queue[index]["needs_wizard"] = False
     _publish_queue()
     return {"item": state.queue[index]}
+
+
+@app.post("/api/queue/bypass_pending")
+def bypass_pending() -> dict:
+    """Take everything still waiting on the wizard and queue it whole, unfiltered.
+
+    This is the deliberate "just download it as is" path. Nothing does this on its
+    own: an unfiltered label can be thousands of releases, which is why items wait
+    for a decision in the first place. But once the decision is 'all of it', there
+    has to be one action that says so — before this, an item that never got through
+    the wizard could not be started at all.
+    """
+    unblocked = 0
+    for item in state.queue:
+        if item.get("needs_wizard"):
+            item["filters"] = None
+            item["needs_wizard"] = False
+            unblocked += 1
+    if unblocked:
+        _publish_queue()
+    return {"unblocked": unblocked, "queue": state.queue}
 
 
 @app.delete("/api/queue/{index}")

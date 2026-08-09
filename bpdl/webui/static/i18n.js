@@ -105,6 +105,7 @@ const I18N = {
     "queue.remove_failed": "Failed to remove: {error}",
     "queue.removed_n": "Removed {count} item(s) from the queue.",
     "queue.clear_failed": "Failed to clear queue: {error}",
+    "queue.confirm_as_is": "{count} item(s) still need filters chosen. Download them as they are \u2014 the whole catalogue, unfiltered?",
 
     "activity.title": "Now downloading",
     "activity.downloaded": "downloaded",
@@ -140,6 +141,7 @@ const I18N = {
     "wizard.queue_all": "Queue everything now",
     "wizard.scan_starting": "Starting scan — this can take a while for large catalogues…",
     "wizard.scan_failed": "Scan failed: {error}",
+    "wizard.set_filters_failed": "Could not save that choice: {error}",
     "wizard.filter_title": "Filter this catalogue",
     "wizard.summary": "{total} tracks scanned{bpm}. Select genres/subgenres/artists to keep — leave empty for \"all\".",
     "wizard.browse_title": "Browse & pick releases",
@@ -395,6 +397,7 @@ const I18N = {
     "queue.remove_failed": "No se pudo quitar: {error}",
     "queue.removed_n": "Se quitaron {count} elemento(s) de la cola.",
     "queue.clear_failed": "No se pudo vaciar la cola: {error}",
+    "queue.confirm_as_is": "{count} elemento(s) a\u00fan necesitan filtros. \u00bfDescargarlos tal cual, el cat\u00e1logo entero y sin filtrar?",
 
     "activity.title": "Descargando ahora",
     "activity.downloaded": "descargadas",
@@ -430,6 +433,7 @@ const I18N = {
     "wizard.queue_all": "Encolar todo ahora",
     "wizard.scan_starting": "Iniciando escaneo — puede tardar bastante en catálogos grandes…",
     "wizard.scan_failed": "Fallo al escanear: {error}",
+    "wizard.set_filters_failed": "No se pudo guardar esa elecci\u00f3n: {error}",
     "wizard.filter_title": "Filtrar este catálogo",
     "wizard.summary": "{total} pistas escaneadas{bpm}. Elige géneros/subgéneros/artistas que quieras — déjalo vacío para \"todos\".",
     "wizard.browse_title": "Explorar y elegir lanzamientos",
@@ -685,6 +689,7 @@ const I18N = {
     "queue.remove_failed": "Verwijderen mislukt: {error}",
     "queue.removed_n": "{count} item(s) uit de wachtrij verwijderd.",
     "queue.clear_failed": "Wachtrij wissen mislukt: {error}",
+    "queue.confirm_as_is": "{count} item(s) hebben nog filters nodig. Ze downloaden zoals ze zijn \u2014 de hele catalogus, ongefilterd?",
 
     "activity.title": "Nu aan het downloaden",
     "activity.downloaded": "gedownload",
@@ -720,6 +725,7 @@ const I18N = {
     "wizard.queue_all": "Alles nu in de wachtrij",
     "wizard.scan_starting": "Scan starten — bij grote catalogi kan dit even duren…",
     "wizard.scan_failed": "Scan mislukt: {error}",
+    "wizard.set_filters_failed": "Kon die keuze niet opslaan: {error}",
     "wizard.filter_title": "Deze catalogus filteren",
     "wizard.summary": "{total} tracks gescand{bpm}. Kies genres/subgenres/artiesten om te houden — leeg laten betekent \"alles\".",
     "wizard.browse_title": "Bladeren en releases kiezen",
