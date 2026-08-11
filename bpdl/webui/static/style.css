@@ -571,3 +571,19 @@ input:focus, select:focus {
 .filter-h { font-size: 13px; margin: 6px 0; }
 #filter-artists-wrap { margin-bottom: 10px; max-height: 22vh; overflow-y: auto; }
 .browse-pager .selpage { display: inline-flex; align-items: center; gap: 5px; margin-left: 10px; }
+
+/* Rename preview: a long list of old -> new folder names. Scrolls inside its own box so
+   the settings modal never grows past the viewport on a library of thousands. */
+.rescan-list {
+  max-height: 30vh;
+  overflow: auto;
+  margin-top: 10px;
+  padding: 10px;
+  border: 1px solid var(--border, #30363d);
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.35);
+  font-size: 12px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-word;
+}

@@ -370,6 +370,22 @@
         </div>
 
         <div class="maintenance-section">
+          <h3 data-i18n="rescan.title">Folder naming</h3>
+          <p class="muted small" data-i18n="rescan.blurb">
+            Naming templates are only applied while downloading, so folders already on disk keep
+            the names they were given at the time. This re-applies the current release template to
+            them, rebuilding each name from the tags in the files &mdash; no re-downloading. You
+            get a preview first; nothing is renamed until you confirm.
+          </p>
+          <div class="modal-actions" style="justify-content:flex-start;gap:10px;margin-top:10px;">
+            <button id="rescan-preview-btn" class="btn ghost" data-i18n="rescan.preview">Preview renames</button>
+            <button id="rescan-apply-btn" class="btn success hidden" data-i18n="rescan.apply">Rename them</button>
+          </div>
+          <p id="rescan-status" class="muted small"></p>
+          <pre id="rescan-list" class="rescan-list hidden"></pre>
+        </div>
+
+        <div class="maintenance-section">
           <h3 data-i18n="history.title">Download history</h3>
           <p class="muted small" data-i18n="history.blurb">
             "Verify library" checks whether each downloaded track's file still exists where it was

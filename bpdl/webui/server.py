@@ -21,6 +21,7 @@ from bpdl import config as config_module
 from bpdl import history
 from bpdl import notify
 from bpdl import paths
+from bpdl import rename as rename_module
 from bpdl.api import BeatportClient
 from bpdl.artcheck import recheck_art
 from bpdl.auth import Auth
@@ -1509,7 +1510,26 @@ def _run_watch_check(only: list[dict] | None = None) -> None:
     try:
         for entry, checker in watched:
             bus.publish({"type": "watch_check_status", "message": f"Checking {entry['name']}..."})
-            result = checker(entry)
+            checked_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
+            try:
+                result = checker(entry)
+            except Exception as e:
+                # One unreachable label must not abandon every label after it in the
+                # sweep. Record the failure against that entry and carry on: the
+                # watermark is only advanced on success, so a failed check simply
+                # re-tries the same window next time.
+                result = {}
+                entry["last_check_error"] = str(e)[:200]
+                bus.publish({"type": "watch_check_status",
+                             "message": f"{entry['name']} failed: {e}"})
+            else:
+                entry["last_check_error"] = ""
+            # Stamp the wall-clock time regardless of outcome. The watermark is a
+            # CONTENT date (what has been published), so a label that releases nothing
+            # for months leaves it frozen and the UI looks stuck. "Last checked" is the
+            # only thing that answers "is the watcher actually running?".
+            entry["last_checked_at"] = checked_at
+            entry["last_check_found"] = int(result.get("new_releases") or 0)
             if result.get("new_releases"):
                 unit = "track" if checker is _check_watched_artist else "release"
                 summary_lines.append(f"{entry['name']}: {result['new_releases']} new {unit}(s), {result['new_tracks']} track(s)")
@@ -1518,6 +1538,8 @@ def _run_watch_check(only: list[dict] | None = None) -> None:
             total_pending += result.get("newly_pending", 0)
     finally:
         state.watch_checking = False
+        if state.config_path:
+            config_module.save(state.cfg, state.config_path)
 
     bus.publish({
         "type": "watch_check_done",
@@ -1603,6 +1625,51 @@ def start_art_recheck(payload: ArtRecheckPayload) -> dict:
             bus.publish({"type": "art_recheck_error", "error": str(e)})
             return
         bus.publish({"type": "art_recheck_done", **result})
+
+    threading.Thread(target=run, daemon=True).start()
+    return {"started": True}
+
+
+class RescanPayload(BaseModel):
+    root: str | None = None
+    apply: bool = False
+
+
+@app.post("/api/rescan")
+def start_rescan(payload: RescanPayload) -> dict:
+    """Re-apply the current naming templates to folders already on disk.
+
+    Templates otherwise only run at download time, so changing one leaves the existing
+    library in the old convention with no way back short of re-downloading it. Runs in a
+    thread and reports over SSE because it opens a tag block per release folder, which is
+    slow enough on a USB library to time out a synchronous request.
+
+    Always previews first: `apply` is a separate call, on the same plan, so nothing is
+    renamed before it has been shown.
+    """
+    if state.downloading:
+        raise HTTPException(400, "wait for the current download to finish first")
+    root = payload.root or state.cfg.downloads_directory
+
+    def run() -> None:
+        try:
+            rows = rename_module.plan(root, state.cfg)
+        except Exception as e:
+            bus.publish({"type": "rescan_error", "error": str(e)})
+            return
+        if not payload.apply:
+            bus.publish({
+                "type": "rescan_preview",
+                "total": len(rows),
+                "changed": sum(1 for r in rows if r.changed),
+                "skipped": sum(1 for r in rows if not r.new),
+                "template": state.cfg.release_directory_template,
+                "items": [{"old": Path(r.old).name, "new": r.new, "reason": r.reason}
+                          for r in rows if r.changed or r.reason][:500],
+            })
+            return
+        done, problems = rename_module.apply(rows)
+        bus.publish({"type": "rescan_done", "renamed": done, "problems": problems[:50]})
 
     threading.Thread(target=run, daemon=True).start()
     return {"started": True}

@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import threading
 from pathlib import Path
+from types import SimpleNamespace
 from unittest import mock
 
 import pytest
@@ -796,3 +797,78 @@ def test_set_filters_still_404s_for_a_url_that_is_not_queued():
             server.set_filters(0, server.FiltersPayload(bypass=True, url="urlGONE"))
     finally:
         server.state.queue = []
+
+
+# ---- folder rename / rescan -------------------------------------------------
+
+def test_artists_display_collapses_a_joined_tag_to_the_short_form():
+    from bpdl.rename import artists_display
+
+    # One tag value holding ten artists is still ten artists. Counting tag VALUES sees
+    # one and spells them all out, which is what produced a 250-char truncated folder
+    # name where a real download writes "VA".
+    joined = ["Ross Homson, Brian Felton, BK, Andy Farley, Nik Denton, Ben Stevens"]
+    assert artists_display(joined, limit=3, short_form="VA") == "VA"
+    assert artists_display(["A vs B"], limit=3, short_form="VA") == "A vs B"
+    assert artists_display(["Ben Stevens, Tenchy"], limit=3, short_form="VA") == "Ben Stevens, Tenchy"
+
+
+def test_artists_display_dedups_repeats_before_counting():
+    from bpdl.rename import artists_display
+
+    # A compilation repeating one artist across tracks must not tip over the limit.
+    assert artists_display(["Ben Stevens", "Ben Stevens", "Tenchy"], limit=3,
+                           short_form="VA") == "Ben Stevens, Tenchy"
+
+
+def test_plan_leaves_folders_alone_when_tags_cannot_fill_the_template(tmp_path, monkeypatch):
+    from bpdl import rename
+
+    d = tmp_path / "Some Release"
+    d.mkdir()
+    (d / "01. x.flac").write_bytes(b"")
+    monkeypatch.setattr(rename, "read_values",
+                        lambda *a, **k: {"name": "Some Release", "artists": "A"})
+
+    cfg = SimpleNamespace(release_directory_template="{name} [{upc}]",
+                          whitespace_character="", artists_limit=3, artists_short_form="VA")
+    rows = rename.plan(str(tmp_path), cfg)
+
+    # {upc} is never embedded in a tag, so the name cannot be rebuilt offline. The folder
+    # must be reported, NOT renamed to something containing a literal "{upc}".
+    assert len(rows) == 1
+    assert rows[0].new == ""
+    assert rows[0].missing == ["upc"]
+    assert not rows[0].changed
+
+
+def test_plan_renders_the_current_template_from_tags(tmp_path, monkeypatch):
+    from bpdl import rename
+
+    d = tmp_path / "Mace In Your Face (2014) [Fireball Recordings - 5052653878845]"
+    d.mkdir()
+    (d / "01. x.flac").write_bytes(b"")
+    monkeypatch.setattr(rename, "read_values", lambda *a, **k: {
+        "name": "Mace In Your Face", "artists": "A vs B", "catalog_number": "FBR189"})
+
+    cfg = SimpleNamespace(release_directory_template="[{catalog_number}] {artists} - {name}",
+                          whitespace_character="", artists_limit=3, artists_short_form="VA")
+    rows = rename.plan(str(tmp_path), cfg)
+
+    assert rows[0].new == "[FBR189] A vs B - Mace In Your Face"
+    assert rows[0].changed
+
+
+def test_apply_never_overwrites_an_existing_folder(tmp_path):
+    from bpdl import rename
+
+    src = tmp_path / "old name"
+    src.mkdir()
+    (tmp_path / "taken").mkdir()
+    rows = [rename.Row(str(src), "taken")]
+
+    done, problems = rename.apply(rows)
+
+    assert done == 0
+    assert src.exists()                       # the source is still there, untouched
+    assert problems and "already exists" in problems[0]

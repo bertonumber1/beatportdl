@@ -38,6 +38,22 @@ function initials(name) {
 // Track/release/artist names come from Beatport and routinely contain &, ", '
 // or < (think `Rock & Roll (12" Mix)`) — interpolating them raw into innerHTML
 // breaks title="..." attributes and card markup. Escape at every interpolation.
+function relTime(iso) {
+  // Watch cards are glanced at, not studied — "6 hours ago" answers "is it running?"
+  // faster than a timestamp does. Falls back to the raw value if it will not parse.
+  if (!iso) return "";
+  const then = new Date(iso);
+  if (isNaN(then)) return iso;
+  const secs = Math.max(0, (Date.now() - then.getTime()) / 1000);
+  const units = [["day", 86400], ["hour", 3600], ["minute", 60]];
+  for (const [name, size] of units) {
+    const n = Math.floor(secs / size);
+    if (n >= 1) return t("time." + name + (n === 1 ? "" : "s"), { count: n });
+  }
+  return t("time.just_now");
+}
+
+
 function esc(s) {
   return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 }
@@ -967,6 +983,28 @@ function handleEvent(ev) {
                                       ok: ev.already_ok, noid: ev.no_id_tag, failed: ev.failed });
       showToast(t("maint.art_done", { count: ev.files_fixed }), ev.failed ? "error" : "success");
       break;
+    case "rescan_preview": {
+      const list = $("#rescan-list");
+      const lines = ev.items.map((i) => (i.new ? `${i.old}\n   -> ${i.new}` : `${i.old}\n   -- ${i.reason}`));
+      list.textContent = lines.join("\n\n") || t("rescan.nothing");
+      list.classList.remove("hidden");
+      $("#rescan-status").textContent =
+        t("rescan.preview_summary", { total: ev.total, changed: ev.changed, skipped: ev.skipped, template: ev.template });
+      $("#rescan-apply-btn").classList.toggle("hidden", ev.changed === 0);
+      $("#rescan-apply-btn").textContent = t("rescan.apply_n", { count: ev.changed });
+      break;
+    }
+    case "rescan_done":
+      $("#rescan-status").textContent = t("rescan.done", { count: ev.renamed });
+      $("#rescan-list").classList.add("hidden");
+      $("#rescan-apply-btn").classList.add("hidden");
+      showToast(t("rescan.done", { count: ev.renamed }), ev.problems.length ? "error" : "success");
+      if (ev.problems.length) $("#rescan-status").textContent += " " + ev.problems.join("; ");
+      break;
+    case "rescan_error":
+      $("#rescan-status").textContent = t("rescan.failed", { error: ev.error });
+      showToast(t("rescan.failed", { error: ev.error }), "error");
+      break;
     case "watch_check_start":
       $("#watch-status").textContent = t("watch.checking_n", { count: ev.count });
       break;
@@ -1077,6 +1115,14 @@ function renderWatchSection(el, heading, kind, entries) {
     // Two different marks, and the difference matters. A full download means the
     // catalogue is on disk up to that date, so updates start there. The watermark
     // only means we looked that far. Show whichever is authoritative.
+    // "Last checked" is wall-clock, deliberately separate from the marks below: those
+    // are CONTENT dates, so a label that publishes nothing leaves them frozen and the
+    // watcher looks broken when it is working perfectly.
+    const lastChecked = w.last_check_error
+      ? t("watchsec.check_failed", { when: relTime(w.last_checked_at), error: w.last_check_error })
+      : w.last_checked_at
+      ? t("watchsec.last_checked", { when: relTime(w.last_checked_at), found: w.last_check_found || 0 })
+      : t("watchsec.never_checked");
     const sync = w.sync || null;
     const mark = kind === "artist" ? "" : sync && sync.synced_through
       ? t("watchsec.full_to", { through: sync.synced_through })
@@ -1089,6 +1135,7 @@ function renderWatchSection(el, heading, kind, entries) {
         ${mark ? `<span class="muted" style="font-size:10.5px;white-space:nowrap;padding-right:14px;">${esc(mark)}</span>` : ""}
       </div>
       ${pendingText ? `<span class="muted" style="font-size:11px;">${esc(pendingText)}</span>` : ""}
+      ${lastChecked ? `<span class="muted" style="font-size:11px;">${esc(lastChecked)}</span>` : ""}
     `;
     if (kind === "label") {
       const range = document.createElement("div");
@@ -1317,6 +1364,23 @@ function wireEvents() {
       await api("POST", "/api/art/recheck", { only_missing: $("#art-only-missing").checked });
     } catch (e) {
       $("#art-recheck-status").textContent = e.message;
+    }
+  });
+  $("#rescan-preview-btn").addEventListener("click", async () => {
+    $("#rescan-status").textContent = t("rescan.scanning");
+    $("#rescan-apply-btn").classList.add("hidden");
+    try {
+      await api("POST", "/api/rescan", { apply: false });
+    } catch (e) {
+      $("#rescan-status").textContent = e.message;
+    }
+  });
+  $("#rescan-apply-btn").addEventListener("click", async () => {
+    $("#rescan-status").textContent = t("rescan.renaming");
+    try {
+      await api("POST", "/api/rescan", { apply: true });
+    } catch (e) {
+      $("#rescan-status").textContent = e.message;
     }
   });
   $("#verify-library-btn").addEventListener("click", async () => {

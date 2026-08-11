@@ -229,6 +229,28 @@ const I18N = {
     "settings.watch_lookback_help": "How far back before each label's watermark to re-check, in case Beatport lists something late.",
     "settings.webhook": "Notification webhook URL (optional)",
 
+    "rescan.title": "Folder naming",
+
+    "rescan.blurb": "Naming templates are only applied while downloading, so folders already on disk keep the names they were given at the time. This re-applies the current release template to them, rebuilding each name from the tags in the files \u2014 no re-downloading. You get a preview first; nothing is renamed until you confirm.",
+
+    "rescan.preview": "Preview renames",
+
+    "rescan.apply": "Rename them",
+
+    "rescan.apply_n": "Rename {count} folder(s)",
+
+    "rescan.scanning": "Reading tags\u2026",
+
+    "rescan.renaming": "Renaming\u2026",
+
+    "rescan.nothing": "Nothing to rename.",
+
+    "rescan.preview_summary": "{total} folder(s) \u00b7 {changed} would be renamed \u00b7 {skipped} cannot be named from tags \u00b7 template {template}",
+
+    "rescan.done": "Renamed {count} folder(s).",
+
+    "rescan.failed": "Rescan failed: {error}",
+
     "maint.title": "Library maintenance",
     "maint.art_only_missing": "Only fix tracks missing art (uncheck to refresh every cover)",
     "maint.recheck_art": "Recheck downloaded album & track art",
@@ -284,6 +306,16 @@ const I18N = {
     "watchsec.noun_prereleases": "pre-releases",
     "watchsec.full_to": "full catalogue to {through}",
     "watchsec.checked_to": "checked to {date}",
+    "watchsec.last_checked": "checked {when} \u00b7 {found} new",
+    "watchsec.never_checked": "never checked",
+    "watchsec.check_failed": "check failed {when}: {error}",
+    "time.just_now": "just now",
+    "time.minute": "{count} minute ago",
+    "time.minutes": "{count} minutes ago",
+    "time.hour": "{count} hour ago",
+    "time.hours": "{count} hours ago",
+    "time.day": "{count} day ago",
+    "time.days": "{count} days ago",
     "watchsec.not_checked": "not checked yet",
     "watchsec.from": "From",
     "watchsec.to": "To",
@@ -521,6 +553,28 @@ const I18N = {
     "settings.watch_lookback_help": "Cuánto retroceder antes de la marca de cada sello al volver a comprobar, por si Beatport publica algo con retraso.",
     "settings.webhook": "URL del webhook de notificaciones (opcional)",
 
+    "rescan.title": "Nombres de carpetas",
+
+    "rescan.blurb": "Las plantillas de nombres solo se aplican al descargar, as\u00ed que las carpetas ya guardadas conservan el nombre que recibieron entonces. Esto vuelve a aplicarles la plantilla actual, reconstruyendo cada nombre a partir de las etiquetas de los archivos, sin volver a descargar nada. Primero ver\u00e1s una vista previa; no se renombra nada hasta que confirmes.",
+
+    "rescan.preview": "Vista previa",
+
+    "rescan.apply": "Renombrar",
+
+    "rescan.apply_n": "Renombrar {count} carpeta(s)",
+
+    "rescan.scanning": "Leyendo etiquetas\u2026",
+
+    "rescan.renaming": "Renombrando\u2026",
+
+    "rescan.nothing": "Nada que renombrar.",
+
+    "rescan.preview_summary": "{total} carpeta(s) \u00b7 {changed} se renombrar\u00edan \u00b7 {skipped} no se pueden nombrar con las etiquetas \u00b7 plantilla {template}",
+
+    "rescan.done": "{count} carpeta(s) renombrada(s).",
+
+    "rescan.failed": "Error al reanalizar: {error}",
+
     "maint.title": "Mantenimiento de la biblioteca",
     "maint.art_only_missing": "Corregir solo pistas sin portada (desmarca para refrescar todas)",
     "maint.recheck_art": "Revisar portadas de álbum y pista descargadas",
@@ -576,6 +630,16 @@ const I18N = {
     "watchsec.noun_prereleases": "prelanzamientos",
     "watchsec.full_to": "catálogo completo hasta {through}",
     "watchsec.checked_to": "comprobado hasta {date}",
+    "watchsec.last_checked": "comprobado {when} \u00b7 {found} nuevas",
+    "watchsec.never_checked": "nunca comprobado",
+    "watchsec.check_failed": "fallo al comprobar {when}: {error}",
+    "time.just_now": "ahora mismo",
+    "time.minute": "hace {count} minuto",
+    "time.minutes": "hace {count} minutos",
+    "time.hour": "hace {count} hora",
+    "time.hours": "hace {count} horas",
+    "time.day": "hace {count} d\u00eda",
+    "time.days": "hace {count} d\u00edas",
     "watchsec.not_checked": "sin comprobar todavía",
     "watchsec.from": "Desde",
     "watchsec.to": "Hasta",
@@ -813,6 +877,28 @@ const I18N = {
     "settings.watch_lookback_help": "Hoe ver vóór de markering van elk label opnieuw wordt gekeken, voor het geval Beatport iets laat plaatst.",
     "settings.webhook": "Webhook-URL voor meldingen (optioneel)",
 
+    "rescan.title": "Mapnamen",
+
+    "rescan.blurb": "Naamsjablonen worden alleen tijdens het downloaden toegepast, dus mappen die er al staan houden de naam die ze toen kregen. Dit past het huidige sjabloon opnieuw toe en bouwt elke naam op uit de tags in de bestanden \u2014 zonder opnieuw te downloaden. Je krijgt eerst een voorbeeld; er wordt niets hernoemd tot je bevestigt.",
+
+    "rescan.preview": "Voorbeeld bekijken",
+
+    "rescan.apply": "Hernoemen",
+
+    "rescan.apply_n": "{count} map(pen) hernoemen",
+
+    "rescan.scanning": "Tags lezen\u2026",
+
+    "rescan.renaming": "Bezig met hernoemen\u2026",
+
+    "rescan.nothing": "Niets te hernoemen.",
+
+    "rescan.preview_summary": "{total} map(pen) \u00b7 {changed} worden hernoemd \u00b7 {skipped} kunnen niet uit tags benoemd worden \u00b7 sjabloon {template}",
+
+    "rescan.done": "{count} map(pen) hernoemd.",
+
+    "rescan.failed": "Opnieuw scannen mislukt: {error}",
+
     "maint.title": "Bibliotheekonderhoud",
     "maint.art_only_missing": "Alleen tracks zonder hoes herstellen (vink uit om elke hoes te vernieuwen)",
     "maint.recheck_art": "Gedownloade album- en trackhoezen opnieuw controleren",
@@ -868,6 +954,16 @@ const I18N = {
     "watchsec.noun_prereleases": "pre-releases",
     "watchsec.full_to": "volledige catalogus tot {through}",
     "watchsec.checked_to": "gecontroleerd tot {date}",
+    "watchsec.last_checked": "gecontroleerd {when} \u00b7 {found} nieuw",
+    "watchsec.never_checked": "nooit gecontroleerd",
+    "watchsec.check_failed": "controle mislukt {when}: {error}",
+    "time.just_now": "zojuist",
+    "time.minute": "{count} minuut geleden",
+    "time.minutes": "{count} minuten geleden",
+    "time.hour": "{count} uur geleden",
+    "time.hours": "{count} uur geleden",
+    "time.day": "{count} dag geleden",
+    "time.days": "{count} dagen geleden",
     "watchsec.not_checked": "nog niet gecontroleerd",
     "watchsec.from": "Van",
     "watchsec.to": "Tot",

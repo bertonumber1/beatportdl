@@ -76,7 +76,18 @@ class App:
         else:
             self._log_error(url, step, err)
 
-    def _setup_downloads_dir(self, base_dir: str, entity, kind: str) -> str:
+    def _setup_downloads_dir(self, base_dir: str, entity, kind: str,
+                             sort_by_label: bool | None = None) -> str:
+        """Build the folder a download belongs in.
+
+        `sort_by_label` is overridable because a release downloaded AS PART OF a label is
+        already inside that label's folder — adding the label name again nests every
+        release one level deeper for no reason
+        (`Fireball Recordings [2026-04-15]/Fireball Recordings/...`). The setting means
+        "group my downloads by label"; it is already satisfied there.
+        """
+        if sort_by_label is None:
+            sort_by_label = self.cfg.sort_by_label
         if self.cfg.sort_by_context:
             template_map = {
                 "release": self.cfg.release_directory_template,
@@ -93,7 +104,7 @@ class App:
                 track_number_padding=self.cfg.track_number_padding,
             )
             sub_dir = entity.directory_name(naming)
-            if kind == "release" and self.cfg.sort_by_label:
+            if kind == "release" and sort_by_label:
                 base_dir = str(Path(base_dir) / entity.label.name)
             base_dir = str(Path(base_dir) / sub_dir)
         Path(base_dir).mkdir(parents=True, exist_ok=True)
@@ -291,7 +302,8 @@ class App:
     def _handle_label_release(self, client: BeatportClient, release, downloads_dir: str) -> None:
         if self.cancelled.is_set():
             return
-        release_dir = self._setup_downloads_dir(downloads_dir, release, "release")
+        release_dir = self._setup_downloads_dir(downloads_dir, release, "release",
+                                                sort_by_label=False)
         cover = None
         if require_cover(self.cfg, True, True):
             try:
