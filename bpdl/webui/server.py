@@ -1128,6 +1128,23 @@ def remove_watch(kind: str, index: int) -> dict:
     return _watch_response()
 
 
+@app.post("/api/watch/clear")
+def clear_watch() -> dict:
+    """Stop watching everything.
+
+    Deliberately does NOT forget the label sync marks. Those record what is actually held
+    on disk, which is still true after you stop watching — so re-watching a label later
+    resumes from where its catalogue really reaches instead of baselining it all over
+    again. Forgetting a mark is a separate, explicit act (DELETE /api/label-syncs/{id}).
+    """
+    removed = len(state.cfg.watched_labels) + len(state.cfg.watched_artists)
+    state.cfg.watched_labels = []
+    state.cfg.watched_artists = []
+    if state.config_path:
+        config_module.save(state.cfg, state.config_path)
+    return {**_watch_response(), "removed": removed}
+
+
 @app.post("/api/watch/check-now")
 def watch_check_now() -> dict:
     _require_login()

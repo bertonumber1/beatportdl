@@ -897,3 +897,24 @@ def test_record_label_sync_rewinds_only_when_explicitly_allowed(tmp_path, monkey
     history.record_label_sync(1, "beatport", "u", "L", synced_through="2020-01-01",
                               allow_rewind=True)
     assert history.get_label_sync(1)["synced_through"] == "2020-01-01"
+
+
+def test_clear_watch_keeps_the_sync_marks(monkeypatch):
+    from bpdl.webui import server
+
+    saved = {}
+    monkeypatch.setattr(server.config_module, "save", lambda *a: saved.setdefault("n", 0))
+    monkeypatch.setattr(server.history, "get_all_pending", lambda url: [])
+    monkeypatch.setattr(server, "_sync_for_url", lambda url: None)
+    server.state.cfg.watched_labels = [{"url": "a", "name": "A"}]
+    server.state.cfg.watched_artists = [{"url": "b", "name": "B"}]
+    try:
+        out = server.clear_watch()
+        # Unwatching is not the same as forgetting what is on disk: the marks record
+        # what is actually held, so re-watching later resumes instead of baselining.
+        assert out["removed"] == 2
+        assert server.state.cfg.watched_labels == []
+        assert server.state.cfg.watched_artists == []
+    finally:
+        server.state.cfg.watched_labels = []
+        server.state.cfg.watched_artists = []

@@ -52,6 +52,9 @@ const I18N = {
     "input.added": "Added \"{name}\".",
 
     "watch.title": "Release watch",
+    "watch.clear_all": "Clear all",
+    "watch.clear_confirm": "Stop watching all {count} label(s) and artist(s)? What you have already downloaded stays recorded, so re-watching later resumes from there.",
+    "watch.cleared": "Stopped watching {count} item(s).",
     "watch.check_now": "Check now",
     "watch.blurb": "Watched labels get every new release grabbed automatically; watched artists get their new tracks. Check interval lives in Settings.",
     "watch.placeholder": "Paste a label or artist URL to watch…",
@@ -387,6 +390,9 @@ const I18N = {
     "input.added": "Añadido \"{name}\".",
 
     "watch.title": "Seguimiento de lanzamientos",
+    "watch.clear_all": "Borrar todo",
+    "watch.clear_confirm": "¿Dejar de vigilar los {count} sellos y artistas? Lo ya descargado sigue registrado, así que al volver a vigilar se reanuda desde ahí.",
+    "watch.cleared": "Se dejaron de vigilar {count} elementos.",
     "watch.check_now": "Comprobar ahora",
     "watch.blurb": "De los sellos seguidos se descarga automáticamente cada lanzamiento nuevo; de los artistas seguidos, sus pistas nuevas. El intervalo de comprobación está en Ajustes.",
     "watch.placeholder": "Pega la URL de un sello o artista para seguirlo…",
@@ -722,6 +728,9 @@ const I18N = {
     "input.added": "\"{name}\" toegevoegd.",
 
     "watch.title": "Releases volgen",
+    "watch.clear_all": "Alles wissen",
+    "watch.clear_confirm": "Stoppen met het volgen van alle {count} labels en artiesten? Wat al gedownload is blijft geregistreerd, dus later opnieuw volgen hervat vanaf daar.",
+    "watch.cleared": "Stopte met het volgen van {count} item(s).",
     "watch.check_now": "Nu controleren",
     "watch.blurb": "Van gevolgde labels wordt elke nieuwe release automatisch opgehaald; van gevolgde artiesten hun nieuwe tracks. Het controle-interval staat bij Instellingen.",
     "watch.placeholder": "Plak een label- of artiest-URL om te volgen…",

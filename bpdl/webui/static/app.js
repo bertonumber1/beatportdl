@@ -1212,8 +1212,10 @@ function renderWatchSection(el, heading, kind, entries) {
     removeBtn.style.cssText = "position:absolute;top:4px;right:4px;";
     removeBtn.innerHTML = "&times;";
     removeBtn.addEventListener("click", async () => {
-      const data = await api("DELETE", `/api/watch/${kind}/${idx}`);
-      renderWatchList(data.watched_labels || [], data.watched_artists || []);
+      await api("DELETE", `/api/watch/${kind}/${idx}`);
+      // Full refresh, not just the list: an unwatched label belongs back in the
+      // "already downloaded in full" section, which renderWatchList does not touch.
+      await refreshWatchList();
     });
     row.appendChild(removeBtn);
     el.appendChild(row);
@@ -1409,6 +1411,18 @@ function wireEvents() {
       await api("POST", "/api/art/recheck", { only_missing: $("#art-only-missing").checked });
     } catch (e) {
       $("#art-recheck-status").textContent = e.message;
+    }
+  });
+  $("#watch-clear-btn").addEventListener("click", async () => {
+    const total = Number($("#watch-count").textContent || 0);
+    if (!total) return;
+    if (!confirm(t("watch.clear_confirm", { count: total }))) return;
+    try {
+      const r = await api("POST", "/api/watch/clear", {});
+      showToast(t("watch.cleared", { count: r.removed }), "success");
+      await refreshWatchList();
+    } catch (e) {
+      showToast(e.message, "error");
     }
   });
   $("#held-mark-btn").addEventListener("click", async () => {
