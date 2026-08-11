@@ -872,3 +872,28 @@ def test_apply_never_overwrites_an_existing_folder(tmp_path):
     assert done == 0
     assert src.exists()                       # the source is still there, untouched
     assert problems and "already exists" in problems[0]
+
+
+def test_record_label_sync_never_rewinds_by_accident(tmp_path, monkeypatch):
+    from bpdl import history
+
+    monkeypatch.setattr(history, "_db_path", tmp_path / "h.sqlite3")
+    history.init_db()
+    history.record_label_sync(1, "beatport", "u", "L", synced_through="2026-05-01")
+    # An incremental update that happens to cover an older window must not pull the mark
+    # back: everything between would fall inside every future fetch window again.
+    history.record_label_sync(1, "beatport", "u", "L", synced_through="2026-01-01")
+    assert history.get_label_sync(1)["synced_through"] == "2026-05-01"
+
+
+def test_record_label_sync_rewinds_only_when_explicitly_allowed(tmp_path, monkeypatch):
+    from bpdl import history
+
+    monkeypatch.setattr(history, "_db_path", tmp_path / "h.sqlite3")
+    history.init_db()
+    history.record_label_sync(1, "beatport", "u", "L", synced_through="2026-05-01")
+    # A person stating how far their copy actually goes is the one case where an earlier
+    # date is the truth; claiming more than is held silently skips the gap.
+    history.record_label_sync(1, "beatport", "u", "L", synced_through="2020-01-01",
+                              allow_rewind=True)
+    assert history.get_label_sync(1)["synced_through"] == "2020-01-01"

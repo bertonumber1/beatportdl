@@ -1078,6 +1078,51 @@ async function openSettingsModal() {
 async function refreshWatchList() {
   const data = await api("GET", "/api/watch");
   renderWatchList(data.watched_labels || [], data.watched_artists || []);
+  try {
+    const held = await api("GET", "/api/label-syncs");
+    renderHeldLabels(held.labels || [], data.watched_labels || []);
+  } catch (e) {
+    /* the held list is informational; never let it break the watch list */
+  }
+}
+
+function renderHeldLabels(held, watched) {
+  // Downloading a label and watching it are separate acts, so a fully-downloaded label
+  // is invisible to the watcher until someone says so. List those, with the one button
+  // that connects them — watching from here starts at the recorded mark rather than
+  // re-walking the whole catalogue.
+  const wrap = $("#held-section");
+  const el = $("#held-list");
+  const urls = new Set(watched.map((w) => w.url));
+  const rows = held.filter((h) => !urls.has(h.label_url));
+  wrap.classList.toggle("hidden", rows.length === 0);
+  el.innerHTML = "";
+  rows.forEach((h) => {
+    const row = document.createElement("div");
+    row.className = "watch-item";
+    row.innerHTML = `
+      <div style="display:flex;align-items:center;gap:8px;">
+        <span style="flex:1;">${esc(h.label_name || h.label_url)}</span>
+        <span class="muted" style="font-size:10.5px;white-space:nowrap;">${esc(t("held.through", { through: h.synced_through }))}</span>
+      </div>`;
+    const btn = document.createElement("button");
+    btn.className = "btn ghost small";
+    btn.textContent = t("held.watch");
+    btn.title = t("held.watch_title", { through: h.synced_through });
+    btn.addEventListener("click", async () => {
+      btn.disabled = true;
+      try {
+        await api("POST", "/api/watch", { url: h.label_url });
+        showToast(t("held.now_watching", { name: h.label_name, through: h.synced_through }), "success");
+        await refreshWatchList();
+      } catch (e) {
+        btn.disabled = false;
+        showToast(e.message, "error");
+      }
+    });
+    row.appendChild(btn);
+    el.appendChild(row);
+  });
 }
 
 function renderWatchList(labels, artists) {
@@ -1364,6 +1409,22 @@ function wireEvents() {
       await api("POST", "/api/art/recheck", { only_missing: $("#art-only-missing").checked });
     } catch (e) {
       $("#art-recheck-status").textContent = e.message;
+    }
+  });
+  $("#held-mark-btn").addEventListener("click", async () => {
+    const url = $("#held-url-input").value.trim();
+    if (!url) return;
+    $("#held-status").textContent = t("held.marking");
+    try {
+      const r = await api("POST", "/api/label-syncs/mark",
+                          { url, through: $("#held-date-input").value || null });
+      $("#held-status").textContent =
+        t("held.marked", { name: r.marked.name || url, through: r.marked.synced_through });
+      $("#held-url-input").value = "";
+      $("#held-date-input").value = "";
+      await refreshWatchList();
+    } catch (e) {
+      $("#held-status").textContent = e.message;
     }
   });
   $("#rescan-preview-btn").addEventListener("click", async () => {

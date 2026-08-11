@@ -587,3 +587,8 @@ input:focus, select:focus {
   white-space: pre-wrap;
   word-break: break-word;
 }
+
+.held-section { margin-top: 14px; }
+.held-section h3 { font-size: 13px; margin: 0 0 4px; }
+.held-mark { margin-top: 12px; }
+.held-mark .watch-add-row input[type="date"] { flex: 0 0 auto; }

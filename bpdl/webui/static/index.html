@@ -104,6 +104,29 @@
       <div id="watch-list" class="chip-list"></div>
       <p id="watch-status" class="muted small"></p>
 
+      <div id="held-section" class="held-section hidden">
+        <h3 data-i18n="held.title">Already downloaded in full</h3>
+        <p class="muted small" data-i18n="held.blurb">
+          These labels are held up to the date shown, so watching one tops it up from
+          exactly there instead of re-walking the whole catalogue.
+        </p>
+        <div id="held-list" class="chip-list"></div>
+      </div>
+
+      <div class="held-mark">
+        <p class="muted small" data-i18n="held.mark_blurb">
+          Already have a label from before, or filed by hand? Say so here and it will be
+          topped up from that point rather than treated as brand new. Leave the date empty
+          for "I have all of it as of now".
+        </p>
+        <div class="watch-add-row">
+          <input id="held-url-input" type="text" data-i18n-placeholder="held.url_ph" placeholder="Paste the label URL…">
+          <input id="held-date-input" type="date" title="Held up to (optional)">
+          <button id="held-mark-btn" class="btn ghost" data-i18n="held.mark">Mark as downloaded</button>
+        </div>
+        <p id="held-status" class="muted small"></p>
+      </div>
+
       <div class="section-head">
         <h2><span data-i18n="explore.title">Explore</span> <span class="muted small" id="explore-count"></span></h2>
         <div class="section-actions">

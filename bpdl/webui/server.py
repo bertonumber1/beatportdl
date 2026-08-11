@@ -1159,6 +1159,63 @@ def delete_label_sync(label_id: int) -> dict:
     return {"labels": history.get_label_syncs()}
 
 
+class LabelMarkPayload(BaseModel):
+    url: str
+    through: str | None = None
+
+
+@app.post("/api/label-syncs/mark")
+def mark_label_downloaded(payload: LabelMarkPayload) -> dict:
+    """Record that a label is already held, without re-downloading it.
+
+    The mark is normally earned by a full unfiltered download, but a library predates
+    that: labels grabbed before this existed, or fetched by other means and filed by
+    hand, have no mark and so get baselined from scratch instead of topped up. This
+    states the fact directly.
+
+    `through` defaults to the label's newest publish_date — "I have all of this as of
+    now". Give an explicit earlier date when the copy stops earlier; that is the one
+    place a mark is allowed to move backwards, because claiming more than is actually
+    held would silently skip everything in between.
+    """
+    _require_login()
+    try:
+        link = parse_url(payload.url)
+    except Exception as e:
+        raise HTTPException(400, f"Invalid URL: {e}") from e
+    if link.type != LABEL_LINK:
+        raise HTTPException(400, "marking only supports label URLs")
+
+    through = (payload.through or "").strip()
+    if through:
+        try:
+            date.fromisoformat(through)
+        except ValueError as e:
+            raise HTTPException(400, "through must be a YYYY-MM-DD date") from e
+
+    client = _client_for(link.store)
+    name = ""
+    try:
+        entity = client.get_label(link.id)
+        name = entity.name
+    except Exception:
+        pass
+    if not through:
+        through = _newest_publish_date(client, link.id)
+        if not through:
+            raise HTTPException(400, "could not read this label's newest release date — "
+                                     "give a date explicitly")
+
+    history.record_label_sync(
+        label_id=link.id, store=link.store, label_url=payload.url,
+        label_name=name or payload.url, synced_through=through, allow_rewind=True,
+    )
+    bus.publish({"type": "label_marked", "url": payload.url, "name": name,
+                 "synced_through": through})
+    return {"labels": history.get_label_syncs(),
+            "marked": {"name": name, "synced_through": through}}
+
+
 @app.post("/api/label/update-latest")
 def label_update_latest(payload: LabelUrlPayload) -> dict:
     """Top a fully-downloaded label up to today: fetch only what Beatport has

@@ -227,7 +227,8 @@ def mark_track_baseline(track_id: int, release_id: int, track_name: str, artists
 
 
 def record_label_sync(label_id: int, store: str, label_url: str, label_name: str,
-                      synced_through: str, releases: int = 0, tracks: int = 0) -> None:
+                      synced_through: str, releases: int = 0, tracks: int = 0,
+                      allow_rewind: bool = False) -> None:
     """Mark a label's catalogue as fully held up to `synced_through` (a Beatport
     publish_date). Called when an unfiltered whole-label download finishes, and
     again each time an incremental update succeeds.
@@ -235,6 +236,11 @@ def record_label_sync(label_id: int, store: str, label_url: str, label_name: str
     synced_through only ever moves forward: an update that happens to cover an
     older window must not rewind the mark and put already-held releases back
     inside every future fetch window.
+
+    `allow_rewind` exists for one case only — a person explicitly stating how far their
+    copy of a label actually goes ("I have it up to 2020"). Then an earlier date is the
+    correct answer and refusing it would leave the mark claiming more than they hold,
+    which silently skips everything in between. Automatic callers must never pass it.
     """
     now = datetime.now(timezone.utc).isoformat()
     with _db() as conn:
@@ -253,7 +259,10 @@ def record_label_sync(label_id: int, store: str, label_url: str, label_name: str
                  releases, tracks),
             )
             return
-        best = max(x for x in (synced_through, row["synced_through"] or "") if x) or ""
+        if allow_rewind:
+            best = synced_through
+        else:
+            best = max(x for x in (synced_through, row["synced_through"] or "") if x) or ""
         conn.execute(
             """UPDATE label_syncs
                SET store = ?, label_url = ?, label_name = ?, synced_through = ?,
