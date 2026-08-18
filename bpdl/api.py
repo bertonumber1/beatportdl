@@ -30,6 +30,37 @@ class ApiError(RuntimeError):
     pass
 
 
+def _error_detail(resp) -> str:
+    """Pull a human-readable reason out of a failed response.
+
+    Beatport does not always answer with a JSON object. A bad password comes back as
+    a bare JSON string, and some gateway errors are HTML. This used to be
+    `resp.json().get("detail")` guarded only by `except ValueError`, so a bare string
+    body raised AttributeError from inside the error handler — the login thread
+    reported `'str' object has no attribute 'get'` and the real reason ("Invalid
+    username or password") never reached the user.
+    """
+    try:
+        body = resp.json()
+    except ValueError:
+        body = None
+    if isinstance(body, dict):
+        detail = body.get("detail") or body.get("error") or body.get("error_description")
+        if isinstance(detail, (list, tuple)):
+            detail = "; ".join(str(d) for d in detail if d)
+        if detail:
+            return str(detail).strip()
+    elif isinstance(body, str) and body.strip():
+        return body.strip()
+    elif isinstance(body, list) and body:
+        return "; ".join(str(d) for d in body if d)
+    # No usable JSON: fall back to the raw body, trimmed, so the reason is not lost.
+    text = (getattr(resp, "text", "") or "").strip()
+    if text and "<" not in text[:1]:
+        return text[:200]
+    return "Unknown error"
+
+
 class Paginated:
     def __init__(self, data: dict, item_cls, store: str):
         self.next = data.get("next")
@@ -102,13 +133,9 @@ class BeatportClient:
             if resp.status_code == 401 and endpoint not in _NO_AUTH_CHECK_ENDPOINTS and not _auth_retried:
                 self.auth.invalidate()
                 return self.raw_fetch(method, endpoint, payload, content_type, allow_redirects, _auth_retried=True)
-            detail = "Unknown error"
-            try:
-                body = resp.json()
-                detail = body.get("detail") or body.get("error") or detail
-            except ValueError:
-                pass
-            raise ApiError(f"request failed with status code: {resp.status_code} - {detail}")
+            raise ApiError(
+                f"request failed with status code: {resp.status_code} - {_error_detail(resp)}"
+            )
 
         return resp
 

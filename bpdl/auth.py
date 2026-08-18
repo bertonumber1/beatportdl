@@ -28,6 +28,11 @@ class TokenPair:
 
     @classmethod
     def from_json(cls, data: dict) -> "TokenPair":
+        # A truncated/hand-edited cache file, or a token endpoint answering with a
+        # bare JSON string, both parse fine but are not dicts — `.get` on them raised
+        # AttributeError out of the login thread instead of a readable failure.
+        if not isinstance(data, dict):
+            raise AuthError("malformed token response")
         return cls(
             access_token=data.get("access_token", ""),
             refresh_token=data.get("refresh_token", ""),
@@ -61,7 +66,11 @@ class Auth:
             data = json.loads(self.cache_file.read_text())
         except (OSError, json.JSONDecodeError):
             return False
-        token = TokenPair.from_json(data)
+        # A corrupt cache must never be fatal: fall through to a fresh login.
+        try:
+            token = TokenPair.from_json(data)
+        except AuthError:
+            return False
         if token.login_id != self.login_id():
             return False
         self.token = token
