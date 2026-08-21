@@ -918,3 +918,125 @@ def test_clear_watch_keeps_the_sync_marks(monkeypatch):
     finally:
         server.state.cfg.watched_labels = []
         server.state.cfg.watched_artists = []
+
+
+# --- per-label watch destination -------------------------------------------------
+# A label's releases have no single home in the library, so the destination is
+# stated per label rather than inferred. These pin the two things that make that
+# safe: the path actually reaches the downloader, and a bad path is refused loudly
+# instead of silently filing music somewhere unintended.
+
+def test_valid_destination_accepts_absolute_and_blank():
+    from bpdl.webui import server
+    assert server._valid_destination("/music/MAKINA/LABELS_&_USBs/DNZ_RECORDS") == \
+        "/music/MAKINA/LABELS_&_USBs/DNZ_RECORDS"
+    assert server._valid_destination("/downloads/x/") == "/downloads/x"   # trailing / trimmed
+    assert server._valid_destination("") == ""
+    assert server._valid_destination(None) == ""
+
+
+def test_valid_destination_rejects_relative_path():
+    from bpdl.webui import server
+    from fastapi import HTTPException
+    import pytest as _pytest
+    with _pytest.raises(HTTPException) as e:
+        server._valid_destination("music/MAKINA")
+    assert e.value.status_code == 400
+
+
+def test_watch_cfg_prefers_per_label_destination_over_staging(monkeypatch, tmp_path):
+    """The per-label folder IS the label's folder, so sort_by_label must be off —
+    otherwise releases land in <dest>/<Label>/ and the chosen path is wrong by one
+    level."""
+    from bpdl.webui import server
+    from bpdl.config import AppConfig
+    dest = tmp_path / "music" / "MAKINA" / "DNZ"
+    staging = tmp_path / "staging"
+    monkeypatch.setattr(server.state, "cfg",
+                        AppConfig(username="u", password="p",
+                                  watch_downloads_directory=str(staging)))
+    cfg = server._watch_cfg({"destination": str(dest)})
+    assert cfg.downloads_directory == str(dest)
+    assert cfg.sort_by_label is False
+    assert dest.is_dir()          # created, so the first download cannot fail on it
+
+
+def test_watch_cfg_falls_back_to_staging_when_no_destination(monkeypatch, tmp_path):
+    from bpdl.webui import server
+    from bpdl.config import AppConfig
+    staging = tmp_path / "staging"
+    monkeypatch.setattr(server.state, "cfg",
+                        AppConfig(username="u", password="p",
+                                  watch_downloads_directory=str(staging)))
+    cfg = server._watch_cfg({"url": "x"})            # entry with no destination
+    assert cfg.downloads_directory == str(staging)
+    assert cfg.sort_by_label is True                 # staging still splits per label
+
+
+def test_watched_label_downloads_into_its_own_destination(monkeypatch, tmp_path):
+    """End to end: the destination on the watch entry is the directory the
+    downloader is actually handed."""
+    dest = tmp_path / "music" / "MAKINA" / "LABELS_&_USBs" / "DNZ_RECORDS"
+    rel = _release(1, "New One", "2026-08-01", "2026-08-01T00:00:00-06:00")
+    h = _WatchHarness([rel])
+    entry = {"url": "https://www.beatport.com/label/dnz-records/1",
+             "name": "DNZ Records", "watched_since": "2026-01-01",
+             "destination": str(dest)}
+    server = h.install(monkeypatch, entry, staging=str(tmp_path / "staging"))
+    server._check_watched_label(entry)
+    assert h.cfg_seen is not None
+    assert h.cfg_seen.downloads_directory == str(dest)
+    assert h.cfg_seen.sort_by_label is False
+
+
+def test_library_destination_can_never_overwrite(monkeypatch, tmp_path):
+    """An unattended watcher writing into the live library must only ever ADD.
+    Even with the global setting on "overwrite", a per-label destination is pinned
+    to skip — the existing file is the user's copy and is not ours to replace."""
+    from bpdl.webui import server
+    from bpdl.config import AppConfig
+    dest = tmp_path / "music" / "MAKINA" / "DNZ"
+    monkeypatch.setattr(server.state, "cfg",
+                        AppConfig(username="u", password="p",
+                                  track_exists="overwrite",
+                                  watch_downloads_directory=str(tmp_path / "staging")))
+    cfg = server._watch_cfg({"destination": str(dest)})
+    assert cfg.track_exists == "skip"
+    # the shared staging folder is not the library, so it keeps the user's setting
+    assert server._watch_cfg({}).track_exists == "overwrite"
+
+
+# --- destination paths must work on Windows too ----------------------------------
+# A naive startswith("/") check rejects every Windows path. bpdl ships to Windows
+# users (see the sys.platform branches in paths.py), so all three absolute shapes
+# have to be accepted while relative paths stay refused.
+
+def test_destination_accepts_windows_drive_paths():
+    from bpdl.webui import server
+    assert server._valid_destination(r"C:\Music\DNZ Records") == r"C:\Music\DNZ Records"
+    assert server._valid_destination("D:/Music/DNZ Records") == "D:/Music/DNZ Records"
+    assert server._valid_destination(r"c:\music\label\\") == r"c:\music\label"
+
+
+def test_destination_accepts_unc_share_paths():
+    from bpdl.webui import server
+    assert server._valid_destination(r"\\nas\music\Label") == r"\\nas\music\Label"
+    assert server._valid_destination("//nas/music/Label") == "//nas/music/Label"
+
+
+def test_destination_still_rejects_relative_paths():
+    from bpdl.webui import server
+    from fastapi import HTTPException
+    import pytest as _pytest
+    for bad in ("music/Label", r"Music\Label", "./music", "C:relative"):
+        with _pytest.raises(HTTPException) as e:
+            server._valid_destination(bad)
+        assert e.value.status_code == 400, bad
+
+
+def test_destination_never_strips_a_bare_root():
+    """rstrip on separators would turn "C:\\" into "C:" and "/" into "", quietly
+    pointing downloads somewhere else entirely."""
+    from bpdl.webui import server
+    assert server._valid_destination("/") == "/"
+    assert server._valid_destination("C:\\") == "C:\\"

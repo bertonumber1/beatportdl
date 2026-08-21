@@ -993,9 +993,11 @@ class WatchAddPayload(BaseModel):
     url: str
     watch_from: str | None = None
     watch_to: str | None = None
+    destination: str | None = None
 
 
 class WatchRangePayload(BaseModel):
+    destination: str | None = None
     watch_from: str | None = None
     watch_to: str | None = None
     # Baseline rows are "seen but not downloaded" marks. Widening a window backwards
@@ -1046,6 +1048,9 @@ def add_watch(payload: WatchAddPayload) -> dict:
     target = state.cfg.watched_artists if is_artist else state.cfg.watched_labels
     if any(w["url"] == payload.url for w in target):
         raise HTTPException(400, f"already watching this {'artist' if is_artist else 'label'}")
+    # Validated before the network call: a mistyped path should fail instantly,
+    # not after a round-trip to Beatport.
+    dest = _valid_destination(payload.destination)
     client = _client_for(link.store)
     try:
         name = client.get_artist(link.id).name if is_artist else client.get_label(link.id).name
@@ -1059,9 +1064,49 @@ def add_watch(payload: WatchAddPayload) -> dict:
         val = _valid_range_date(raw, key)
         if val:
             entry[key] = val
+    if dest:
+        entry["destination"] = dest
     target.append(entry)
     config_module.save(state.cfg, state.config_path)
     return _watch_response()
+
+
+_WIN_DRIVE = re.compile(r"^[A-Za-z]:[\\/]")
+
+
+def _valid_destination(raw: str | None) -> str:
+    """Per-label download destination, or empty to use the shared staging folder.
+
+    A label's releases have no single home in a library, so the destination is
+    stated per label rather than inferred — an inferred path that is wrong files
+    new music into the wrong place, which is worse than leaving it in staging.
+
+    Absolute only, and absolute means all three shapes, not just POSIX:
+        /srv/music/Label            POSIX (and inside a container)
+        C:\Music\Label  /  C:/Music/Label   Windows drive
+        \\nas\music\Label                   Windows UNC share
+
+    Checking `startswith("/")` alone rejects every Windows path, which is why the
+    drive and UNC forms are matched explicitly. Relative paths stay refused: they
+    resolve against the server's working directory, which is not what anyone means.
+    """
+    val = (raw or "").strip()
+    if not val:
+        return ""
+    is_posix = val.startswith("/") and not val.startswith("//")
+    is_unc = val.startswith("\\\\") or val.startswith("//")
+    if not (is_posix or is_unc or _WIN_DRIVE.match(val)):
+        raise HTTPException(
+            400,
+            "destination must be an absolute path — /music/Label, C:\\Music\\Label "
+            "or \\\\server\\share\\Label",
+        )
+    # Trim trailing separators, but never strip a bare root. "C:\\" must not become
+    # "C:", which on Windows means that drive's CURRENT directory, not its root.
+    trimmed = val.rstrip("/\\")
+    if not trimmed or re.fullmatch(r"[A-Za-z]:", trimmed):
+        return val
+    return trimmed
 
 
 def _valid_range_date(raw: str | None, field: str) -> str:
@@ -1091,6 +1136,12 @@ def set_watch_range(index: int, payload: WatchRangePayload) -> dict:
             entry[key] = val
         else:
             entry.pop(key, None)
+    if payload.destination is not None:
+        dest = _valid_destination(payload.destination)
+        if dest:
+            entry["destination"] = dest
+        else:
+            entry.pop("destination", None)
     cleared = 0
     if payload.rescan:
         cleared = history.clear_label_baselines(entry.get("name") or "")
@@ -1331,18 +1382,30 @@ def _record_full_label_download(item: dict, run) -> None:
 _WATERMARK_KEY = "last_publish_date"
 
 
-def _watch_cfg() -> config_module.AppConfig:
+def _watch_cfg(entry: dict | None = None) -> config_module.AppConfig:
     """Config for unattended watch-list downloads. With watch_downloads_directory
     set they land in a staging folder instead of the library, one subfolder per
     label — a label's releases have no single home in the library, so staging and
     filing by hand beats guessing (see the field comment in config.py)."""
+    per_label = ((entry or {}).get("destination") or "").strip()
     staging = (state.cfg.watch_downloads_directory or "").strip()
-    if not staging:
+    target = per_label or staging
+    if not target:
         return state.cfg
     cfg = replace(state.cfg)
-    cfg.downloads_directory = staging
-    cfg.sort_by_label = True
-    Path(staging).mkdir(parents=True, exist_ok=True)
+    cfg.downloads_directory = target
+    # A per-label destination IS the label's folder, so nesting another one inside
+    # it would give …/Label/Label/. Only the shared staging folder needs the split.
+    cfg.sort_by_label = not per_label
+    if per_label:
+        # ADD ONLY, NEVER REPLACE. A per-label destination points into the live
+        # library, where an existing file is the user's copy — often a better rip
+        # than Beatport's, and never something an unattended 6-hourly job should
+        # be able to destroy. track_exists is a user-facing setting that could be
+        # flipped to "overwrite" in Settings for normal downloads; pinning it here
+        # means that choice can never reach the library through the watcher.
+        cfg.track_exists = "skip"
+    Path(target).mkdir(parents=True, exist_ok=True)
     return cfg
 
 
@@ -1457,7 +1520,7 @@ def _check_watched_label(entry: dict) -> dict:
     total_tracks = 0
     download_failed = False
     if new_releases:
-        run = App(_watch_cfg(), state.bp, state.bs, on_event=bus.publish)
+        run = App(_watch_cfg(entry), state.bp, state.bs, on_event=bus.publish)
         for release in new_releases:
             try:
                 run.handle_url(release.store_url())
@@ -1542,7 +1605,7 @@ def _check_watched_artist(entry: dict) -> dict:
 
     total_tracks = 0
     if new_tracks:
-        run = App(_watch_cfg(), state.bp, state.bs, on_event=bus.publish)
+        run = App(_watch_cfg(entry), state.bp, state.bs, on_event=bus.publish)
         for track in new_tracks:
             try:
                 run.handle_url(track.store_url())

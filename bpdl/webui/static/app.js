@@ -1071,6 +1071,8 @@ function formToPayload(form) {
 
 async function openSettingsModal() {
   const data = await api("GET", "/api/settings");
+  const skipBox = $("#watch-skip-existing");
+  if (skipBox) skipBox.checked = !!data.skip_previously_downloaded;
   fillForm($("#settings-form"), data);
   $("#settings-modal").classList.remove("hidden");
 }
@@ -1121,6 +1123,30 @@ function renderHeldLabels(held, watched) {
       }
     });
     row.appendChild(btn);
+    // "Clear all" only empties the WATCH list; a full-download mark survives it by
+    // design, so the only way to drop one was to edit the DB. Forgetting is
+    // deliberately per-label and confirmed: the mark is the record that the
+    // catalogue is held up to a date, and losing it makes the next watch
+    // re-baseline the whole back catalogue.
+    const del = document.createElement("button");
+    del.className = "btn ghost small danger";
+    del.textContent = t("held.forget");
+    del.title = t("held.forget_title");
+    del.addEventListener("click", async () => {
+      if (!confirm(t("held.forget_confirm", { name: h.label_name || h.label_url }))) return;
+      del.disabled = true;
+      try {
+        await api("DELETE", `/api/label-syncs/${h.label_id}`);
+        showToast(t("held.forgotten", { name: h.label_name }), "success");
+        await refreshWatchList();
+      } catch (e) {
+        del.disabled = false;
+        showToast(e.message, "error");
+      }
+    });
+    // Sits beside "held to <date>": removing a mark is an act on that date claim,
+    // so it belongs next to it rather than out with the Watch action.
+    row.querySelector("div").appendChild(del);
     el.appendChild(row);
   });
 }
@@ -1186,6 +1212,7 @@ function renderWatchSection(el, heading, kind, entries) {
       const range = document.createElement("div");
       range.className = "watch-range";
       range.innerHTML = `
+        <label class="watch-dest-label">${esc(t("watchsec.dest"))}<input type="text" class="watch-dest" placeholder="/music/GENRE/LABELS_&_USBs/Label" value="${esc(w.destination || "")}"></label>
         <label>${esc(t("watchsec.from"))}<input type="date" class="watch-from" value="${esc(w.watch_from || "")}"></label>
         <label>${esc(t("watchsec.to"))}<input type="date" class="watch-to" value="${esc(w.watch_to || "")}"></label>
         <label class="watch-rescan" title="${esc(t("watch.rescan_title"))}">
@@ -1229,6 +1256,7 @@ async function saveWatchRange(index, root, btn) {
   btn.textContent = t("watch.saving");
   try {
     const res = await api("PATCH", `/api/watch/label/${index}/range`, {
+      destination: root.querySelector(".watch-dest").value,
       watch_from: root.querySelector(".watch-from").value,
       watch_to: root.querySelector(".watch-to").value,
       rescan,
@@ -1496,14 +1524,30 @@ function wireEvents() {
   });
   $("#watch-add-btn").addEventListener("click", async () => {
     const input = $("#watch-url-input");
+    const destEl = $("#watch-dest-input");
     const url = input.value.trim();
     if (!url) return;
     try {
-      const data = await api("POST", "/api/watch", { url });
+      const data = await api("POST", "/api/watch", { url, destination: (destEl?.value || "").trim() });
       renderWatchList(data.watched_labels || [], data.watched_artists || []);
       input.value = "";
+      if (destEl) destEl.value = "";
       $("#watch-status").textContent = t("watch.watching");
     } catch (e) {
+      $("#watch-status").textContent = e.message;
+    }
+  });
+  // Mirrors the Settings checkbox. POST /api/settings merges (exclude_none), so
+  // sending this one field alone cannot disturb any other setting.
+  $("#watch-skip-existing")?.addEventListener("change", async (ev) => {
+    const on = ev.target.checked;
+    try {
+      await api("POST", "/api/settings", { skip_previously_downloaded: on });
+      const form = $("#settings-form")?.elements?.skip_previously_downloaded;
+      if (form) form.checked = on;                 // keep Settings in step
+      $("#watch-status").textContent = t(on ? "watch.skip_on" : "watch.skip_off");
+    } catch (e) {
+      ev.target.checked = !on;
       $("#watch-status").textContent = e.message;
     }
   });

@@ -391,7 +391,11 @@ input:focus, select:focus {
 
 .wizard-columns { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin-top: 14px; }
 .wizard-col h3 { font-size: 12.5px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--muted); margin: 0 0 10px; }
-.chip-list { display: flex; flex-direction: column; gap: 6px; max-height: 260px; overflow-y: auto; }
+.chip-list { display: flex; flex-direction: column; gap: 6px; max-height: 60vh; overflow-y: auto; }
+/* the destination is a path, so it needs the whole row rather than sharing
+   with the two date inputs */
+.watch-dest-label { flex: 1 1 100%; }
+.watch-dest-label input { width: 100%; font-family: ui-monospace, monospace; font-size: 11px; }
 .chip {
   display: flex; align-items: center; gap: 8px; padding: 6px 8px;
   border-radius: 7px; border: 1px solid var(--border); cursor: pointer;
@@ -592,3 +596,11 @@ input:focus, select:focus {
 .held-section h3 { font-size: 13px; margin: 0 0 4px; }
 .held-mark { margin-top: 12px; }
 .held-mark .watch-add-row input[type="date"] { flex: 0 0 auto; }
+
+.watch-skip-row { display: flex; align-items: center; gap: 8px; margin: 0 0 10px; font-size: 12px; color: var(--muted); cursor: pointer; }
+
+.btn.ghost.small.danger { color: var(--danger, #e5534b); border-color: currentColor; }
+.btn.ghost.small.danger:hover { background: rgba(229,83,75,.12); }
+
+/* compact, so it sits against the date without crowding the label name */
+.watch-item .btn.ghost.small.danger { padding: 2px 8px; font-size: 10.5px; line-height: 1.6; }

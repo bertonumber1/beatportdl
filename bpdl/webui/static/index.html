@@ -100,8 +100,13 @@
       <p class="muted small watch-blurb" data-i18n="watch.blurb">Watched labels get every new release grabbed automatically; watched artists get their new tracks. Check interval lives in Settings.</p>
       <div class="watch-add-row">
         <input id="watch-url-input" type="text" data-i18n-placeholder="watch.placeholder" placeholder="Paste a label or artist URL to watch…">
+        <input id="watch-dest-input" type="text" data-i18n-placeholder="watch.dest_ph" placeholder="optional: /music/GENRE/LABELS_&amp;_USBs/Label">
         <button id="watch-add-btn" class="btn ghost" data-i18n="watch.add">Watch</button>
       </div>
+      <label class="watch-skip-row" title="">
+        <input id="watch-skip-existing" type="checkbox">
+        <span data-i18n="watch.skip_existing">Don't re-download tracks already downloaded</span>
+      </label>
       <div id="watch-list" class="chip-list"></div>
       <p id="watch-status" class="muted small"></p>
 
