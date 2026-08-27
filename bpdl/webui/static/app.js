@@ -110,6 +110,215 @@ function artStyle(name, cover) {
   return `background:linear-gradient(135deg, hsl(${h},55%,32%), hsl(${(h + 40) % 360},55%,20%))`;
 }
 
+// ---- fake-lossless check ----------------------------------------------------------------
+// The scan lives on the server (it survives closing the tab); this only ever holds a copy
+// of the last results so the table can be re-rendered after a quarantine or delete.
+const fake = { results: [], root: "", selected: new Set() };
+
+const FLAGGED = ["lossy", "padded", "upsampled", "suspect"];
+
+// Verdict labels are looked up through a table rather than built as "fake.v_" + verdict:
+// a key assembled at runtime is invisible to the translation completeness test, which is
+// exactly the kind of gap that only shows up on a Spanish screen nobody opened.
+const VERDICT_KEY = {
+  lossy: "fake.v_lossy", padded: "fake.v_padded", upsampled: "fake.v_upsampled",
+  suspect: "fake.v_suspect", clean: "fake.v_clean", unreadable: "fake.v_unreadable",
+  lossy_format: "fake.v_lossy_format",
+};
+function verdictLabel(v) { return t(VERDICT_KEY[v] || "fake.v_unreadable"); }
+
+async function openFakeModal() {
+  $("#fake-modal").classList.remove("hidden");
+  try {
+    const st = await api("GET", "/api/transcode/status");
+    $("#fake-noffmpeg").classList.toggle("hidden", st.ffmpeg);
+    $("#fake-scan-btn").disabled = !st.ffmpeg;
+    const folder = $("#fake-folder");
+    if (!folder.value) folder.value = localStorage.getItem("fakeFolder") || st.default_folder || "";
+    if (st.scan) renderFakeScan(st.scan);
+    setFakeRunning(st.running);
+    if (st.running && st.progress && st.progress.total) showFakeProgress(st.progress);
+  } catch (e) {
+    showToast(e.message, "error");
+  }
+}
+
+function showFakeProgress(p) {
+  $("#fake-bar-fill").style.width = (p.total ? Math.round((p.done / p.total) * 100) : 0) + "%";
+  $("#fake-status").textContent = t("fake.progress", { done: p.done, total: p.total, file: p.file });
+}
+
+function setFakeRunning(running) {
+  $("#fake-scan-btn").classList.toggle("hidden", running);
+  $("#fake-stop-btn").classList.toggle("hidden", !running);
+  $("#fake-progress").classList.toggle("hidden", !running);
+}
+
+async function startFakeScan() {
+  const folder = $("#fake-folder").value.trim();
+  if (!folder) return;
+  localStorage.setItem("fakeFolder", folder);
+  $("#fake-bar-fill").style.width = "0%";
+  $("#fake-status").textContent = t("fake.starting");
+  setFakeRunning(true);
+  try {
+    await api("POST", "/api/transcode/scan", { folder, recursive: $("#fake-recursive").checked });
+  } catch (e) {
+    setFakeRunning(false);
+    showToast(e.message, "error");
+  }
+}
+
+function fakeGroups(results) {
+  // Grouped by release, because a transcode is almost never one stray track — it is a
+  // whole album delivered from one encoder pass, and seeing the other eleven tracks of
+  // that release flagged next to it is what turns a number into a decision.
+  const groups = new Map();
+  results.forEach((r, i) => {
+    const dir = r.path.slice(0, r.path.lastIndexOf("/"));
+    const key = dir;
+    if (!groups.has(key)) {
+      groups.set(key, {
+        title: r.album || dir.slice(dir.lastIndexOf("/") + 1),
+        artist: r.artist || "",
+        date: r.date || "",
+        rows: [],
+      });
+    }
+    const g = groups.get(key);
+    if (!g.artist && r.artist) g.artist = r.artist;
+    if (!g.date && r.date) g.date = r.date;
+    g.rows.push({ r, i });
+  });
+  return [...groups.values()];
+}
+
+function renderFakeScan(scan) {
+  fake.results = scan.results || [];
+  fake.root = scan.root || "";
+  fake.selected.clear();
+  const counts = scan.counts || {};
+  const order = ["lossy", "padded", "upsampled", "suspect", "unreadable", "clean", "lossy_format"];
+  $("#fake-summary").innerHTML = order
+    .filter((v) => counts[v])
+    .map((v) => `<span class="fake-chip verdict ${v}"><b>${counts[v]}</b> ${esc(verdictLabel(v))}</span>`)
+    .join("");
+  const any = fake.results.length > 0;
+  $("#fake-summary").classList.toggle("hidden", !any);
+  $("#fake-toolbar").classList.toggle("hidden", !any);
+  $("#fake-table").classList.toggle("hidden", !any);
+  $("#fake-empty").classList.toggle("hidden", any);
+  $("#fake-selectall").checked = false;
+  $("#fake-spec").classList.add("hidden");
+
+  const flagged = fake.results.filter((r) => FLAGGED.includes(r.verdict)).length;
+  $("#fake-delete-all-btn").classList.toggle("hidden", !flagged);
+  $("#fake-delete-all-count").textContent = flagged;
+
+  $("#fake-rows").innerHTML = fakeGroups(fake.results).map((g) => {
+    const head = `<tr class="fake-group"><td colspan="8">
+      <b>${esc(g.title)}</b>${g.artist ? " — " + esc(g.artist) : ""}${g.date ? ` <span class="muted">(${esc(g.date)})</span>` : ""}
+    </td></tr>`;
+    return head + g.rows.map(({ r, i }) => {
+      const why = r.error ? r.error : (r.reasons || []).join("; ");
+      const src = r.estimated_source ? ` <b>${esc(r.estimated_source)}</b>` : "";
+      const track = r.title || r.name;
+      return `<tr>
+        <td><input type="checkbox" class="fake-pick" data-i="${i}"></td>
+        <td><span class="verdict ${r.verdict}">${esc(verdictLabel(r.verdict))}</span>
+            <div class="muted small">${r.confidence}%</div></td>
+        <td class="fake-file">${esc(track)}${r.artist ? `<small>${esc(r.artist)}</small>` : `<small>${esc(r.name)}</small>`}</td>
+        <td class="num">${r.cutoff_hz ? (r.cutoff_hz / 1000).toFixed(1) + " kHz" : "—"}</td>
+        <td class="num">${r.wall_db ? r.wall_db.toFixed(0) + " dB" : "—"}</td>
+        <td class="num">${r.above_db ? r.above_db.toFixed(0) + " dB" : "—"}</td>
+        <td class="fake-why">${esc(why)}${src}</td>
+        <td><button class="icon-btn fake-spec-btn" data-i="${i}" title="${esc(t("fake.spectrogram"))}">
+          <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 12h2l2-6 3 13 3-17 3 14 2-4h3"/></svg>
+        </button></td>
+      </tr>`;
+    }).join("");
+  }).join("");
+  $$(".fake-pick").forEach((cb) => cb.addEventListener("change", onFakePick));
+  $$(".fake-spec-btn").forEach((b) => b.addEventListener("click", () => showSpectrogram(Number(b.dataset.i))));
+  updateFakeSelection();
+}
+
+function onFakePick(e) {
+  const path = fake.results[Number(e.target.dataset.i)].path;
+  if (e.target.checked) fake.selected.add(path);
+  else fake.selected.delete(path);
+  updateFakeSelection();
+}
+
+function updateFakeSelection() {
+  const n = fake.selected.size;
+  $("#fake-selcount").textContent = t("fake.selected", { count: n });
+  $("#fake-quarantine-btn").disabled = !n;
+  $("#fake-delete-btn").disabled = !n;
+}
+
+function toggleFakeSelectAll(on) {
+  fake.selected.clear();
+  $$(".fake-pick").forEach((cb) => {
+    const r = fake.results[Number(cb.dataset.i)];
+    // "Select everything flagged" deliberately skips clean files: the whole point of
+    // one checkbox is to act on the findings, and a box that also ticks the good files
+    // turns a quarantine into a library-wide accident.
+    const pick = on && FLAGGED.includes(r.verdict);
+    cb.checked = pick;
+    if (pick) fake.selected.add(r.path);
+  });
+  updateFakeSelection();
+}
+
+function showSpectrogram(i) {
+  const r = fake.results[i];
+  if (!r) return;
+  const box = $("#fake-spec");
+  const img = $("#fake-spec-img");
+  box.classList.remove("hidden");
+  $("#fake-spec-name").textContent =
+    [r.artist, r.title || r.name].filter(Boolean).join(" — ") + (r.date ? ` (${r.date})` : "");
+  $("#fake-spec-sub").textContent = [r.album, r.name].filter(Boolean).join(" · ");
+  $("#fake-spec-nums").textContent = r.cutoff_hz
+    ? t("fake.spec_nums", { cutoff: (r.cutoff_hz / 1000).toFixed(1), wall: r.wall_db.toFixed(0), above: r.above_db.toFixed(0) })
+    : "";
+  $("#fake-spec-status").classList.remove("hidden");
+  $("#fake-spec-status").textContent = t("fake.spec_loading");
+  img.classList.add("hidden");
+  // Cache-bust nothing: the server keys its render on path + mtime, so the same file
+  // always returns the same picture and the browser is free to keep it.
+  const url = "/api/transcode/spectrogram?path=" + encodeURIComponent(r.path);
+  img.src = url;
+  const save = $("#fake-spec-save");
+  save.href = url;
+  save.download = [r.verdict, r.artist, r.title || r.name].filter(Boolean).join(" - ") + ".png";
+  img.onload = () => {
+    $("#fake-spec-status").classList.add("hidden");
+    img.classList.remove("hidden");
+  };
+  img.onerror = () => {
+    $("#fake-spec-status").textContent = t("fake.spec_failed");
+  };
+  box.scrollIntoView({ behavior: "smooth", block: "nearest" });
+}
+
+async function fakeAction(kind) {
+  const paths = [...fake.selected];
+  if (!paths.length) return;
+  if (kind === "delete" && !confirm(t("fake.delete_confirm", { count: paths.length }))) return;
+  try {
+    const r = await api("POST", `/api/transcode/${kind}`, { paths });
+    if (kind === "delete") showToast(t("fake.deleted", { count: r.deleted }), "success");
+    else showToast(t("fake.quarantined", { count: r.moved, dir: r.quarantine_dir }), "success");
+    if (r.failed && r.failed.length) showToast(r.failed[0].error, "error");
+    const st = await api("GET", "/api/transcode/status");
+    if (st.scan) renderFakeScan(st.scan);
+  } catch (e) {
+    showToast(e.message, "error");
+  }
+}
+
 function showToast(msg, kind) {
   const el = $("#toast");
   el.textContent = msg;
@@ -970,6 +1179,30 @@ function handleEvent(ev) {
       break;
     case "settings_saved":
       break;
+    case "transcode_progress":
+      showFakeProgress(ev);
+      break;
+    case "transcode_done":
+      setFakeRunning(false);
+      renderFakeScan(ev.scan);
+      showToast(t("fake.done", { count: ev.scan.scanned }), "success");
+      break;
+    case "transcode_export_progress":
+      $("#fake-status").textContent = t("fake.export_progress", { done: ev.done, total: ev.total, file: ev.file });
+      $("#fake-progress").classList.remove("hidden");
+      break;
+    case "transcode_export_done":
+      $("#fake-progress").classList.add("hidden");
+      showToast(t("fake.exported", { count: ev.saved, dir: ev.dir }), "success");
+      break;
+    case "transcode_export_error":
+      $("#fake-progress").classList.add("hidden");
+      showToast(t("fake.export_failed", { error: ev.error }), "error");
+      break;
+    case "transcode_error":
+      setFakeRunning(false);
+      showToast(t("fake.failed", { error: ev.error }), "error");
+      break;
     case "art_recheck_status":
       $("#art-recheck-status").textContent = ev.message;
       break;
@@ -1470,6 +1703,44 @@ function wireEvents() {
     const sel = document.querySelector(".stats-range-btn.selected");
     return sel && sel.dataset.days ? Number(sel.dataset.days) : null;
   };
+  $("#fake-btn").addEventListener("click", openFakeModal);
+  $(".fake-close").addEventListener("click", () => $("#fake-modal").classList.add("hidden"));
+  $("#fake-scan-btn").addEventListener("click", startFakeScan);
+  $("#fake-stop-btn").addEventListener("click", async () => {
+    $("#fake-status").textContent = t("fake.stopping");
+    try { await api("POST", "/api/transcode/cancel", {}); } catch (e) { showToast(e.message, "error"); }
+  });
+  $("#fake-spec-close").addEventListener("click", () => $("#fake-spec").classList.add("hidden"));
+  $("#fake-selectall").addEventListener("change", (e) => toggleFakeSelectAll(e.target.checked));
+  $("#fake-quarantine-btn").addEventListener("click", () => fakeAction("quarantine"));
+  $("#fake-delete-btn").addEventListener("click", () => fakeAction("delete"));
+  $("#fake-delete-all-btn").addEventListener("click", () => {
+    toggleFakeSelectAll(true);
+    $("#fake-selectall").checked = true;
+    fakeAction("delete");
+  });
+  $("#fake-report-btn").addEventListener("click", () => window.open("/api/transcode/report", "_blank"));
+  $("#fake-export-btn").addEventListener("click", async () => {
+    try {
+      const r = await api("POST", "/api/transcode/export-spectrograms", { flagged_only: true });
+      showToast(t("fake.export_started", { count: r.count, dir: r.dest }), "success");
+    } catch (e) { showToast(e.message, "error"); }
+  });
+  $("#fake-clear-btn").addEventListener("click", async () => {
+    if (!fake.results.length) return;
+    if (!confirm(t("fake.clear_confirm", { count: fake.results.length }))) return;
+    try {
+      const r = await api("POST", "/api/transcode/clear", {});
+      renderFakeScan({ results: [], counts: {}, root: "" });
+      showToast(t("fake.cleared", { count: r.cleared }), "success");
+    } catch (e) { showToast(e.message, "error"); }
+  });
+  $("#fake-restore-btn").addEventListener("click", async () => {
+    try {
+      const r = await api("POST", "/api/transcode/restore", {});
+      showToast(t("fake.restored", { count: r.restored }), "success");
+    } catch (e) { showToast(e.message, "error"); }
+  });
   $("#stats-btn").addEventListener("click", () => openStatsModal(statsDays()));
   $$(".stats-range-btn").forEach((b) => b.addEventListener("click", () => {
     $$(".stats-range-btn").forEach((x) => x.classList.remove("selected"));

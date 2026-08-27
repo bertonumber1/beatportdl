@@ -31,6 +31,10 @@
            right in the middle of the bar, where a visitor who cannot read any of the
            surrounding words still lands on them. Populated by i18n.js. -->
       <div id="lang-switch"></div>
+      <button id="fake-btn" class="top-btn" data-i18n-title="fake.title" title="Fake-lossless check">
+        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 12h2l2-6 3 13 3-17 3 14 2-4h3"/></svg>
+        <span data-i18n="fake.short">Check</span>
+      </button>
       <button id="stats-btn" class="top-btn" data-i18n-title="top.stats" title="Library stats">
         <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="5" y1="20" x2="5" y2="12"/><line x1="12" y1="20" x2="12" y2="5"/><line x1="19" y1="20" x2="19" y2="14"/></svg>
         <span data-i18n="top.stats">Stats</span>
@@ -446,6 +450,96 @@
   </div>
 
   <!-- Stats modal: library-wide breakdown, "for nerds" -->
+  <!-- Fake-lossless / transcode check ------------------------------------------------------
+       Its own modal rather than another row in Settings: a scan runs for minutes and
+       produces a table you act on, which is a workspace, not a preference. -->
+  <div id="fake-modal" class="modal-backdrop hidden">
+    <div class="modal wide">
+      <div class="modal-head">
+        <h2 data-i18n="fake.title">Fake-lossless check</h2>
+        <button class="icon-btn fake-close" data-i18n-title="settings.close" title="Close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p class="muted small" data-i18n="fake.blurb">
+          A lossy encoder throws away everything above a cutoff frequency and cannot put it back.
+          Re-encoding to FLAC rebuilds a lossless container around lossy audio &mdash; the extension,
+          bitrate and file size all look right. This measures the spectrum of every file in a folder
+          and reports the ones that were made from MP3 or AAC.
+        </p>
+        <p id="fake-noffmpeg" class="error-text hidden" data-i18n="fake.no_ffmpeg">
+          ffmpeg is not installed in this container, so audio cannot be decoded. Install ffmpeg (or
+          the imageio-ffmpeg package) and restart.
+        </p>
+
+        <div class="fake-controls">
+          <div class="field grow">
+            <label data-i18n="fake.folder">Folder to check</label>
+            <input id="fake-folder" type="text" spellcheck="false" placeholder="/downloads">
+          </div>
+          <label class="field checkbox"><input id="fake-recursive" type="checkbox" checked>
+            <span data-i18n="fake.recursive">Include subfolders</span></label>
+          <button id="fake-scan-btn" class="btn primary" data-i18n="fake.scan">Scan</button>
+          <button id="fake-stop-btn" class="btn danger hidden" data-i18n="fake.stop">Stop</button>
+        </div>
+
+        <div id="fake-progress" class="fake-progress hidden">
+          <div class="fake-bar"><div id="fake-bar-fill"></div></div>
+          <p id="fake-status" class="muted small"></p>
+        </div>
+
+        <div id="fake-summary" class="fake-summary hidden"></div>
+
+        <div id="fake-toolbar" class="fake-toolbar hidden">
+          <label class="muted small"><input type="checkbox" id="fake-selectall">
+            <span data-i18n="fake.select_flagged">select everything flagged</span></label>
+          <span class="muted small" id="fake-selcount">0</span>
+          <span class="spacer"></span>
+          <button id="fake-report-btn" class="btn ghost small" data-i18n="fake.report">Save report</button>
+          <button id="fake-export-btn" class="btn ghost small" data-i18n="fake.export">Save spectrograms</button>
+          <button id="fake-clear-btn" class="btn ghost small" data-i18n="fake.clear">Clear results</button>
+          <button id="fake-restore-btn" class="btn ghost small" data-i18n="fake.restore">Put quarantined back</button>
+          <button id="fake-quarantine-btn" class="btn ghost small" disabled data-i18n="fake.quarantine">Quarantine</button>
+          <button id="fake-delete-btn" class="btn danger small" disabled data-i18n="fake.delete">Delete</button>
+          <button id="fake-delete-all-btn" class="btn danger small hidden"><span data-i18n="fake.delete_all">Delete all flagged</span> <b id="fake-delete-all-count"></b></button>
+        </div>
+
+        <table id="fake-table" class="fake-table hidden">
+          <thead><tr>
+            <th></th>
+            <th data-i18n="fake.col_verdict">Verdict</th>
+            <th data-i18n="fake.col_track">Track</th>
+            <th data-i18n="fake.col_cutoff">Cutoff</th>
+            <th data-i18n="fake.col_wall">Wall</th>
+            <th data-i18n="fake.col_above">Above</th>
+            <th data-i18n="fake.col_why">Why</th>
+            <th></th>
+          </tr></thead>
+          <tbody id="fake-rows"></tbody>
+        </table>
+        <p id="fake-empty" class="muted small hidden" data-i18n="fake.empty">Nothing scanned yet.</p>
+
+        <!-- The Spek picture. The numbers in the table are the argument; this is the
+             thing you actually recognise at a glance, so it sits one click from every row. -->
+        <div id="fake-spec" class="fake-spec hidden">
+          <div class="fake-spec-head">
+            <div>
+              <b id="fake-spec-name"></b>
+              <p id="fake-spec-sub" class="muted small"></p>
+              <p id="fake-spec-nums" class="muted small"></p>
+            </div>
+            <div class="fake-spec-actions">
+              <a id="fake-spec-save" class="btn ghost small" download data-i18n="fake.spec_save">Save this picture</a>
+              <button id="fake-spec-close" class="icon-btn" data-i18n-title="settings.close" title="Close">&times;</button>
+            </div>
+          </div>
+          <p id="fake-spec-status" class="muted small" data-i18n="fake.spec_loading">Rendering spectrogram…</p>
+          <img id="fake-spec-img" alt="" class="hidden">
+          <p class="muted small" data-i18n="fake.spec_hint">A lossy ancestor shows as a dead band with a razor-straight edge across the top. A genuine master fades out unevenly and keeps noise all the way to the top of the picture.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <div id="stats-modal" class="modal-backdrop hidden">
     <div class="modal wide">
       <div class="modal-head">

@@ -1,0 +1,41 @@
+THIRD-PARTY NOTICES
+===================
+
+beatportdl-webui bundles the components below. Everything else in this program is
+covered by the LICENSE file shipped alongside it.
+
+
+FFmpeg
+------
+The Windows executable contains an FFmpeg build, used to decode audio for the
+fake-lossless / transcode checker. FFmpeg is free software licensed under the GNU
+Lesser General Public License version 2.1 or later (some builds, under the GNU
+General Public License version 2 or later). It is not part of this program and is
+redistributed unmodified.
+
+  Project : https://ffmpeg.org
+  Licence : https://ffmpeg.org/legal.html
+  Source  : https://github.com/FFmpeg/FFmpeg
+
+The build is the one distributed by imageio-ffmpeg; its binaries and the
+corresponding sources are published at:
+
+  https://github.com/imageio/imageio-binaries
+
+You do not have to use the bundled copy. Put your own `ffmpeg.exe` next to
+`bpdl-web.exe`, or set the environment variable BPDL_FFMPEG to its full path, and
+that one is used instead.
+
+
+imageio-ffmpeg
+--------------
+BSD 2-Clause License. Copyright (c) 2019-2025, imageio contributors.
+
+  https://github.com/imageio/imageio-ffmpeg
+
+
+NumPy
+-----
+BSD 3-Clause License. Copyright (c) 2005-2025, NumPy Developers.
+
+  https://numpy.org

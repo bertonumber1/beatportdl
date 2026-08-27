@@ -24,6 +24,7 @@ from bpdl import labelfollow
 from bpdl import notify
 from bpdl import paths
 from bpdl import rename as rename_module
+from bpdl import spectral
 from bpdl.api import BeatportClient
 from bpdl.artcheck import recheck_art
 from bpdl.auth import Auth
@@ -90,6 +91,17 @@ class State:
         self.watch_checking: bool = False
         self.current_run: App | None = None
         self.stop_requested: bool = False
+        # Last transcode scan, kept whole. Quarantine and delete are only ever
+        # allowed to touch paths that appear in it, so the destructive endpoints
+        # cannot be pointed at an arbitrary path on the machine.
+        self.transcode: dict | None = None
+        self.transcode_running: bool = False
+        self.transcode_stop: bool = False
+        # Last progress line, so a tab opened part-way through a scan shows where it
+        # is rather than an empty bar — the SSE events are only seen by tabs that
+        # were already listening.
+        self.transcode_progress: dict = {}
+
 
 state = State()
 
@@ -2080,6 +2092,227 @@ def start_rescan(payload: RescanPayload) -> dict:
 
     threading.Thread(target=run, daemon=True).start()
     return {"started": True}
+
+
+# ---- transcode / fake-lossless check ---------------------------------------------------------
+
+FLAGGED_VERDICTS = ("lossy", "padded", "upsampled", "suspect")
+
+
+class TranscodeScanPayload(BaseModel):
+    folder: str = ""
+    recursive: bool = True
+    seconds: float = spectral.MAX_ANALYSIS_SECONDS
+
+
+class TranscodeActionPayload(BaseModel):
+    paths: list[str] = []
+
+
+def _transcode_report_path() -> Path:
+    base = state.config_path.parent if state.config_path else Path(".")
+    return base / "transcode-report.txt"
+
+
+def _known_paths() -> set[str]:
+    scan = state.transcode or {}
+    return {r["path"] for r in scan.get("results", [])}
+
+
+def _checked(paths: list[str]) -> list[str]:
+    """Only act on files the last scan actually reported.
+
+    The alternative — trusting the paths in the request — would make a delete
+    endpoint that takes any absolute path on the box, reachable from any tab left
+    open on this UI. The scan results are the whitelist.
+    """
+    if not state.transcode:
+        raise HTTPException(400, "run a scan first")
+    known = _known_paths()
+    unknown = [p for p in paths if p not in known]
+    if unknown:
+        raise HTTPException(400, f"{len(unknown)} path(s) were not in the last scan")
+    if not paths:
+        raise HTTPException(400, "no files selected")
+    return paths
+
+
+@app.get("/api/transcode/status")
+def transcode_status() -> dict:
+    try:
+        ffmpeg_path = spectral.ffmpeg_exe()
+    except spectral.FFmpegMissing:
+        ffmpeg_path = ""
+    return {
+        "running": state.transcode_running,
+        "ffmpeg": bool(ffmpeg_path),
+        # Reported so "which ffmpeg is it actually using?" is answerable without
+        # guessing — the lookup has four candidates and they are not interchangeable.
+        "ffmpeg_path": ffmpeg_path,
+        "scan": state.transcode,
+        "progress": state.transcode_progress,
+        "default_folder": state.cfg.downloads_directory,
+    }
+
+
+@app.post("/api/transcode/scan")
+def transcode_scan(payload: TranscodeScanPayload) -> dict:
+    if state.transcode_running:
+        raise HTTPException(400, "a scan is already running")
+    if not spectral.ffmpeg_available():
+        raise HTTPException(400, "ffmpeg is not installed — the analyser needs it to decode audio")
+    folder = (payload.folder or state.cfg.downloads_directory).strip()
+    if not folder or not Path(folder).expanduser().is_dir():
+        raise HTTPException(400, f"not a folder: {folder or '(empty)'}")
+
+    state.transcode_running = True
+    state.transcode_stop = False
+
+    def run() -> None:
+        try:
+            def progress(i: int, total: int, path: str) -> None:
+                state.transcode_progress = {"done": i, "total": total, "file": Path(path).name}
+                bus.publish({"type": "transcode_progress", **state.transcode_progress})
+
+            scan = spectral.scan_folder(
+                folder,
+                max_seconds=max(10.0, min(payload.seconds, 1800.0)),
+                recursive=payload.recursive,
+                on_progress=progress,
+                should_stop=lambda: state.transcode_stop,
+            )
+            state.transcode = scan
+            try:
+                _transcode_report_path().write_text(spectral.format_report(scan), encoding="utf-8")
+            except OSError:
+                pass  # a read-only config dir must not lose the scan itself
+            bus.publish({"type": "transcode_done", "scan": scan})
+        except Exception as e:
+            bus.publish({"type": "transcode_error", "error": str(e)})
+        finally:
+            state.transcode_running = False
+            state.transcode_progress = {}
+
+    threading.Thread(target=run, daemon=True).start()
+    return {"started": True}
+
+
+@app.post("/api/transcode/cancel")
+def transcode_cancel() -> dict:
+    state.transcode_stop = True
+    return {"stopping": True}
+
+
+@app.post("/api/transcode/quarantine")
+def transcode_quarantine(payload: TranscodeActionPayload) -> dict:
+    paths = _checked(payload.paths)
+    result = spectral.quarantine_files(paths, state.transcode["root"])
+    _forget(paths)
+    return result
+
+
+@app.post("/api/transcode/delete")
+def transcode_delete(payload: TranscodeActionPayload) -> dict:
+    paths = _checked(payload.paths)
+    result = spectral.delete_files(paths, state.transcode["root"])
+    _forget(paths)
+    return result
+
+
+@app.post("/api/transcode/restore")
+def transcode_restore() -> dict:
+    if not state.transcode:
+        raise HTTPException(400, "run a scan first")
+    qdir = Path(state.transcode["root"]) / spectral.QUARANTINE_DIRNAME
+    return spectral.restore_quarantined(str(qdir))
+
+
+def _forget(paths: list[str]) -> None:
+    """Drop acted-on files from the held scan so the table matches the disk and a
+    second click cannot try to move or delete a file that is already gone."""
+    if not state.transcode:
+        return
+    gone = set(paths)
+    results = [r for r in state.transcode["results"] if r["path"] not in gone]
+    counts: dict[str, int] = {}
+    for r in results:
+        counts[r["verdict"]] = counts.get(r["verdict"], 0) + 1
+    state.transcode["results"] = results
+    state.transcode["counts"] = counts
+    state.transcode["scanned"] = len(results)
+
+
+class SpectrogramExportPayload(BaseModel):
+    flagged_only: bool = True
+    dest: str = ""
+
+
+@app.post("/api/transcode/clear")
+def transcode_clear() -> dict:
+    """Forget the last scan. Only clears what is held in memory and the report —
+    it never touches an audio file, and quarantined files stay where they are."""
+    had = len(state.transcode["results"]) if state.transcode else 0
+    state.transcode = None
+    state.transcode_progress = {}
+    _transcode_report_path().unlink(missing_ok=True)
+    return {"cleared": had}
+
+
+@app.post("/api/transcode/export-spectrograms")
+def transcode_export(payload: SpectrogramExportPayload) -> dict:
+    if not state.transcode:
+        raise HTTPException(400, "run a scan first")
+    results = state.transcode["results"]
+    if payload.flagged_only:
+        results = [r for r in results if r["verdict"] in FLAGGED_VERDICTS]
+    if not results:
+        raise HTTPException(400, "nothing to export")
+    base = state.config_path.parent if state.config_path else Path(".")
+    dest = payload.dest.strip() or str(base / "spectrograms-export")
+
+    def run() -> None:
+        def progress(i: int, total: int, name: str) -> None:
+            bus.publish({"type": "transcode_export_progress", "done": i, "total": total, "file": name})
+
+        try:
+            result = spectral.export_spectrograms(results, str(base / "spectrograms"), dest,
+                                                  on_progress=progress)
+            bus.publish({"type": "transcode_export_done", **result})
+        except Exception as e:
+            bus.publish({"type": "transcode_export_error", "error": str(e)})
+
+    threading.Thread(target=run, daemon=True).start()
+    return {"started": True, "count": len(results), "dest": dest}
+
+
+@app.get("/api/transcode/spectrogram")
+def transcode_spectrogram(path: str):
+    """The Spek picture for one file — the same thing the numbers describe, drawn.
+
+    Restricted to files in the last scan for the same reason the destructive endpoints
+    are: this takes a path from the query string and hands back a render of whatever it
+    points at, which without the check would read any audio file on the machine.
+    """
+    if not state.transcode:
+        raise HTTPException(400, "run a scan first")
+    if path not in _known_paths():
+        raise HTTPException(404, "that file was not in the last scan")
+    base = state.config_path.parent if state.config_path else Path(".")
+    try:
+        png = spectral.spectrogram_png(path, str(base / "spectrograms"))
+    except spectral.FFmpegMissing as e:
+        raise HTTPException(400, str(e))
+    except Exception as e:
+        raise HTTPException(500, f"could not render: {e}")
+    return FileResponse(str(png), media_type="image/png")
+
+
+@app.get("/api/transcode/report")
+def transcode_report():
+    path = _transcode_report_path()
+    if not path.is_file():
+        raise HTTPException(404, "no report yet — run a scan")
+    return FileResponse(str(path), media_type="text/plain", filename=path.name)
 
 
 # ---- SSE stream -----------------------------------------------------------------

@@ -1,6 +1,6 @@
 [project]
 name = "beatportdl-webui"
-version = "2.11.1"
+version = "2.12.0"
 description = "beatportdl-webui — Beatport/Beatsource downloader web UI, Python rewrite dropping Go"
 requires-python = ">=3.10"
 dependencies = [
@@ -10,6 +10,11 @@ dependencies = [
     "rich>=13.7",
     "fastapi>=0.110",
     "uvicorn>=0.29",
+    # Spectral transcode detection: numpy for the FFT, and imageio-ffmpeg to decode
+    # audio. The bundled ffmpeg is deliberate — it makes the Windows build work with
+    # nothing to install, and a system ffmpeg is still preferred when one is present.
+    "numpy>=1.26",
+    "imageio-ffmpeg>=0.4.9",
 ]
 
 [project.optional-dependencies]

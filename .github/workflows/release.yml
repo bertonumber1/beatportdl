@@ -30,14 +30,49 @@ jobs:
         run: >
           pyinstaller --onefile --name bpdl-web
           --collect-all fastapi --collect-all starlette --collect-all uvicorn
+          --collect-all numpy
           --add-data "bpdl/webui/static;bpdl/webui/static"
           scripts/win_bpdl_web.py
 
+      # bpdl-web.exe is self-contained: PyInstaller pulls imageio-ffmpeg's binary in
+      # with the package, so the fake-lossless checker decodes audio on a machine that
+      # has never heard of ffmpeg, with nothing to install and no second copy to ship.
+      # A user who wants their own build can still drop an ffmpeg.exe beside the exe or
+      # set BPDL_FFMPEG — spectral.ffmpeg_exe() prefers both over the bundled one.
+      # Redistributing an ffmpeg build means shipping its notice, hence the third-party file.
       - name: Stage Windows release bundle
         run: |
           mkdir dist\windows-bundle
           copy dist\bpdl-web.exe dist\windows-bundle\
           copy README.md dist\windows-bundle\
+          copy THIRD-PARTY-NOTICES.txt dist\windows-bundle\
+          dir dist\windows-bundle
+
+      # Proves the bundle actually runs before it is published. numpy and the ffmpeg
+      # lookup are exactly the things a PyInstaller build breaks silently, and
+      # /api/transcode/status reports on both without needing Beatport credentials.
+      - name: Smoke-test the bundle
+        working-directory: dist/windows-bundle
+        shell: pwsh
+        run: |
+          $p = Start-Process -FilePath .\bpdl-web.exe -PassThru -WindowStyle Hidden
+          try {
+            $ok = $false
+            foreach ($i in 1..30) {
+              Start-Sleep -Seconds 2
+              try {
+                $r = Invoke-RestMethod -Uri http://127.0.0.1:8095/api/transcode/status -TimeoutSec 5
+                if (-not $r.ffmpeg) { throw "the bundled ffmpeg was not found by the exe" }
+                Write-Host "status ok, ffmpeg at $($r.ffmpeg_path)"
+                $ok = $true
+                break
+              } catch [System.Net.WebException] { }
+                catch { if ($_.Exception.Message -like "*ffmpeg*") { throw } }
+            }
+            if (-not $ok) { throw "bpdl-web.exe never answered on :8095" }
+          } finally {
+            Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
+          }
 
       - uses: actions/upload-artifact@v4
         with:
