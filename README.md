@@ -5,7 +5,9 @@ Go version by [unspok3n](https://github.com/unspok3n)) — no Go, no CGO, no com
 TagLib/ffmpeg toolchain. A Beatport/Beatsource downloader with label/artist filtering,
 delivered as a **web UI** (FastAPI + server-sent events) reachable from any browser on your
 network: live per-track progress bars, real album art, a genre/subgenre/artist filter wizard,
-full settings control, and an installable "app icon" via its web manifest.
+full settings control, and an installable "app icon" via its web manifest. It also ships a
+**fake-lossless checker** — point it at a folder and it finds the FLACs that were really made
+from an MP3 or an AAC, with a spectrogram for every track.
 
 Runs on Linux (amd64/arm64), Windows, and macOS. Docker images are multi-arch
 (`linux/amd64` + `linux/arm64`).
@@ -14,15 +16,23 @@ Runs on Linux (amd64/arm64), Windows, and macOS. Docker images are multi-arch
 
 **Home — paste a label / artist / track / release URL, and watch labels or artists for new releases**
 
-![Home — queue and release watch](screenshots/bpdl1.png)
-
-**Library stats — tracks, releases, success rate and downloads per day**
-
-![Library stats](screenshots/bpdl2.png)
+![Home — queue and release watch](screenshots/home.png)
 
 **Explore — browse the Beatport Top 100, new tracks, new releases and DJ charts, and queue straight from the charts**
 
-![Explore — Beatport Top 100 and charts](screenshots/bpdl3.png)
+![Explore — Beatport Top 100 and charts](screenshots/explore.png)
+
+**Library stats — tracks, releases, success rate and downloads per day**
+
+![Library stats](screenshots/stats.png)
+
+**Fake-lossless check — scan a folder and find the FLACs that were really made from an MP3 or an AAC**
+
+![Fake-lossless check — scan results grouped by release](screenshots/fake-lossless-check.png)
+
+**A spectrogram for every track — the wall at 21 kHz is an encoder's, not a mastering engineer's**
+
+![Spectrogram of a flagged track](screenshots/spectrogram.png)
 
 ## Quick start — Docker (recommended)
 
@@ -71,7 +81,8 @@ bpdl-web    # web UI on :8095
 
 **Standalone `.exe`, no Python required:** download `beatportdl-webui-windows-x64.zip` from the
 [Releases page](https://github.com/bertonumber1/beatportdl/releases), unzip, run
-`bpdl-web.exe`, then open `http://localhost:8095`.
+`bpdl-web.exe`, then open `http://localhost:8095`. The `.exe` is self-contained — it carries
+its own ffmpeg, so the fake-lossless checker works with nothing else installed.
 
 Or, with Python 3.10+ already installed:
 
@@ -85,7 +96,7 @@ bpdl-web
 
 ```powershell
 pip install . pyinstaller
-pyinstaller --onefile --name bpdl-web --collect-all fastapi --collect-all starlette --collect-all uvicorn --add-data "bpdl/webui/static;bpdl/webui/static" scripts\win_bpdl_web.py
+pyinstaller --onefile --name bpdl-web --collect-all fastapi --collect-all starlette --collect-all uvicorn --collect-all numpy --add-data "bpdl/webui/static;bpdl/webui/static" scripts\win_bpdl_web.py
 ```
 
 The `.exe` lands in `dist\`. This is exactly what `.github/workflows/release.yml` runs on every
@@ -110,9 +121,44 @@ variable if you need it elsewhere.
    downloaded/skipped/failed stats bar, toasts on completion.
 6. Gear icon → **Settings**, any time — every field, plus the album/track art recheck tool under
    "Library maintenance".
-7. **Language** — the flags in the top bar switch the whole UI between English, Spanish and
+7. **Check** in the top bar → the **fake-lossless checker**. Give it a folder, press Scan, and
+   every lossless-claiming file in it is measured and given a verdict. See below.
+8. **Language** — the flags in the top bar switch the whole UI between English, Spanish and
    Dutch. The choice is remembered in the browser; with none saved, the browser's own language
    is used and anything else falls back to English.
+
+### Fake-lossless check
+
+A lossy encoder throws away everything above a cutoff frequency and cannot put it back.
+Re-encoding the result to FLAC rebuilds a lossless *container* around permanently lossy audio —
+the extension, the bitrate and the file size all look right, and only the spectrum still knows.
+
+Point **Check** at a folder and every file in it gets a long-term average spectrum (16384-point
+Hann FFT, 50% overlap, digital silence skipped, normalised to the loudest bin), reported as
+three numbers: the **cutoff**, how sharply energy falls across it (**wall**), and how much is
+left **above** it.
+
+| verdict | meaning |
+|---|---|
+| `lossy` | cutoff well below Nyquist **and** a brick wall at it **and** a dead band above it |
+| `suspect` | one or two of those three, but not all — worth a look |
+| `padded` | 24-bit declared, but only 16 bits are ever used |
+| `upsampled` | high sample rate with nothing up there to justify it |
+| `lossy format` | AAC in an `.m4a` — meant to be lossy, so not a fake |
+| `clean` | full spectrum with a live noise floor above it |
+
+A mastering engineer can produce any one of the three signs on their own, which is why `lossy`
+needs all three together and one alone only earns `suspect`.
+
+Results are grouped by release with artist, album and year from the tags, and every track has a
+spectrogram one click away. Findings can be **quarantined** — an instant move within the same
+filesystem, with a restore log, so nothing is destroyed to look at it later — or deleted
+outright. Both refuse any path that was not in the last scan. There is also a text report and a
+bulk spectrogram export.
+
+Decoding needs **ffmpeg**. The Windows `.exe` carries its own, the Docker image installs one,
+and a source install pulls in `imageio-ffmpeg`. To use your own build instead, put `ffmpeg` next
+to the program or set `BPDL_FFMPEG` to its full path.
 
 ### Adding a language
 
