@@ -196,6 +196,14 @@ function fakeGroups(results) {
 function renderFakeScan(scan) {
   fake.results = scan.results || [];
   fake.root = scan.root || "";
+  // The box must name the folder these results came FROM, not the one that happened
+  // to be remembered from last time. They diverge the moment you scan a subfolder —
+  // the table then lists tracks the path above it does not contain, which is the one
+  // thing on this panel you have to be able to trust before pressing Delete.
+  if (fake.root) {
+    $("#fake-folder").value = fake.root;
+    localStorage.setItem("fakeFolder", fake.root);
+  }
   fake.selected.clear();
   const counts = scan.counts || {};
   const order = ["lossy", "padded", "upsampled", "suspect", "unreadable", "clean", "lossy_format"];
