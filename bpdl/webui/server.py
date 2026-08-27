@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import queue
 import re
 import threading
@@ -19,6 +20,7 @@ from pydantic import BaseModel
 
 from bpdl import config as config_module
 from bpdl import history
+from bpdl import labelfollow
 from bpdl import notify
 from bpdl import paths
 from bpdl import rename as rename_module
@@ -88,7 +90,6 @@ class State:
         self.watch_checking: bool = False
         self.current_run: App | None = None
         self.stop_requested: bool = False
-
 
 state = State()
 
@@ -274,6 +275,7 @@ def _cfg_dict(cfg: config_module.AppConfig) -> dict:
         "watch_interval_hours": cfg.watch_interval_hours,
         "watch_downloads_directory": cfg.watch_downloads_directory,
         "watch_lookback_days": cfg.watch_lookback_days,
+        "auto_watch_labels": cfg.auto_watch_labels,
         "notify_webhook_url": cfg.notify_webhook_url,
     }
 
@@ -308,6 +310,7 @@ class SettingsPayload(BaseModel):
     watch_interval_hours: int | None = None
     watch_downloads_directory: str | None = None
     watch_lookback_days: int | None = None
+    auto_watch_labels: bool | None = None
     notify_webhook_url: str | None = None
 
 
@@ -1066,6 +1069,12 @@ def add_watch(payload: WatchAddPayload) -> dict:
             entry[key] = val
     if dest:
         entry["destination"] = dest
+        # Marked now, while the folder is known, so the entry survives the folder
+        # being moved or renamed later.
+        if not is_artist:
+            err = _mark_label_folder(entry, link)
+            if err:
+                entry["follow_note"] = f"could not mark folder: {err}"
     target.append(entry)
     config_module.save(state.cfg, state.config_path)
     return _watch_response()
@@ -1075,7 +1084,7 @@ _WIN_DRIVE = re.compile(r"^[A-Za-z]:[\\/]")
 
 
 def _valid_destination(raw: str | None) -> str:
-    """Per-label download destination, or empty to use the shared staging folder.
+    r"""Per-label download destination, or empty to use the shared staging folder.
 
     A label's releases have no single home in a library, so the destination is
     stated per label rather than inferred — an inferred path that is wrong files
@@ -1106,7 +1115,66 @@ def _valid_destination(raw: str | None) -> str:
     trimmed = val.rstrip("/\\")
     if not trimmed or re.fullmatch(r"[A-Za-z]:", trimmed):
         return val
-    return trimmed
+    return _reachable_destination(trimmed)
+
+
+# Where the library is mounted INSIDE this process, and the host path it comes from.
+# Typing the host path is the obvious mistake — it is what the file manager shows and
+# what every other tool on the box takes — but this process only ever sees the mount
+# point, so a host path saved happily and then failed six hours later, in a status
+# field, as "[Errno 13] Permission denied: '/mnt/usb-a'". Translate it instead.
+_HOST_TO_LOCAL = (
+    ("/mnt/usb-a/drive/Music", "/music"),
+    ("/mnt/usb-b/drive/downloads", "/downloads"),
+    ("/mnt/usb-a/drive/downloads", "/downloads-archive"),
+)
+
+
+def _reachable_destination(path: str) -> str:
+    """Rewrite a host path to its mounted equivalent, and refuse what cannot be written.
+
+    A destination is only useful if THIS process can write to it. Checking that here
+    means a typo is rejected while the person is looking at the form, instead of
+    surfacing as a permission error on the next unattended sweep.
+    """
+    for host, local in _HOST_TO_LOCAL:
+        if path == host or path.startswith(host + "/"):
+            path = local + path[len(host):]
+            break
+    if not path.startswith("/") or path.startswith("//"):
+        return path                      # Windows drive / UNC: not ours to verify here
+    # Only REFUSE what is positively identifiable as a host path we do not have. A
+    # merely non-existent /music/... folder is fine — the downloader creates it. Being
+    # stricter than this rejects legitimate new label folders, which is worse than the
+    # bug being fixed.
+    for host_root in _HOST_ROOTS:
+        if path.startswith(host_root) and not Path(path).is_dir():
+            raise HTTPException(
+                400,
+                f"cannot see '{path}' from the app. That is the HOST path; this app "
+                f"sees the library at /music/... instead. Try "
+                f"'{_suggest_local(path)}' — and check the folder name matches disk.",
+            )
+    probe = Path(path)
+    parent = probe if probe.is_dir() else probe.parent
+    if parent.is_dir() and not os.access(parent, os.W_OK):
+        raise HTTPException(400, f"'{path}' exists but is not writable by the app.")
+    return path
+
+
+# Host directories that are never visible from inside this process. A path under one
+# of these that does not resolve is the host-path mistake, not a folder yet to be made.
+_HOST_ROOTS = ("/mnt/",)
+
+
+def _suggest_local(path: str) -> str:
+    """Best-guess mounted equivalent of a host path, for the error message."""
+    tail = path.rstrip("/").split("/")
+    for host, local in _HOST_TO_LOCAL:
+        marker = host.rstrip("/").split("/")[-1]
+        if marker in tail:
+            return local + "/" + "/".join(tail[tail.index(marker) + 1:])
+    return "/music/<genre>/<label folder>"
 
 
 def _valid_range_date(raw: str | None, field: str) -> str:
@@ -1140,8 +1208,19 @@ def set_watch_range(index: int, payload: WatchRangePayload) -> dict:
         dest = _valid_destination(payload.destination)
         if dest:
             entry["destination"] = dest
+            try:
+                err = _mark_label_folder(entry, parse_url(entry["url"]))
+            except Exception as e:
+                err = str(e)
+            entry["follow_note"] = f"could not mark folder: {err}" if err else ""
+            entry["follow_status"] = "conflict" if err else "ok"
         else:
+            # Clearing the folder is an instruction to use staging, so the stale
+            # follow state goes with it.
             entry.pop("destination", None)
+            entry.pop("follow_status", None)
+            entry.pop("follow_note", None)
+            entry.pop("followed_at", None)
     cleared = 0
     if payload.rescan:
         cleared = history.clear_label_baselines(entry.get("name") or "")
@@ -1205,6 +1284,117 @@ def watch_check_now() -> dict:
         raise HTTPException(400, "nothing is being watched")
     threading.Thread(target=_run_watch_check, daemon=True).start()
     return {"started": True}
+
+
+# ---- following a label's folder -------------------------------------------------
+
+def _follow_roots() -> list[str]:
+    """Where to look for a label folder that has moved, best place first.
+
+    Order is the tie-break that matters. Copying a download into the library
+    rather than moving it leaves the marker in two places; the library copy is the
+    one that was meant to be kept, so the library root is searched first and a
+    match there ends the search.
+    """
+    configured = [r.strip() for r in (state.cfg.label_follow_roots or []) if str(r).strip()]
+    candidates = configured or [
+        "/music",                              # the library, if it is mounted here
+        "/downloads",
+        "/downloads-archive",
+        state.cfg.downloads_directory,
+        state.cfg.watch_downloads_directory,
+    ]
+    roots: list[str] = []
+    for raw in candidates:
+        cand = (raw or "").strip().rstrip("/")
+        if not cand or not Path(cand).is_dir():
+            continue
+        # Drop anything already covered by a root we kept: scanning
+        # /downloads and /downloads/beatport both walks the same tree twice and
+        # makes one folder look like two matches.
+        if any(cand == kept or cand.startswith(kept + "/") for kept in roots):
+            continue
+        roots.append(cand)
+    return roots
+
+
+def _resolve_label_destination(entry: dict, link) -> str:
+    """The folder this label's new releases belong in right now, or "" for staging.
+
+    Called on every check, before anything is fetched. The recorded path is only
+    trusted while it still holds this label's marker: a path alone cannot tell a
+    folder that was moved from a folder that was emptied and left behind, and
+    those two need opposite answers. Anything uncertain returns "" and the
+    releases go to staging — a download in staging costs a manual file, a
+    download written into the wrong label's folder costs a search.
+    """
+    recorded = (entry.get("destination") or "").strip()
+    if not recorded:
+        entry.pop("follow_status", None)
+        entry.pop("follow_note", None)
+        return ""
+
+    res = labelfollow.resolve(recorded, link.id, link.store, _follow_roots())
+    entry["follow_status"] = res.status
+    entry["follow_note"] = res.note
+
+    if res.status == "moved":
+        entry["destination"] = res.path
+        entry["followed_at"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
+        bus.publish({"type": "label_followed", "url": entry["url"],
+                     "name": entry.get("name", ""), "was": recorded,
+                     "destination": res.path})
+    elif res.status == "adopted":
+        err = labelfollow.write_anchor(res.path, label_id=link.id, store=link.store,
+                                       label_url=entry["url"], label_name=entry.get("name", ""))
+        if err:
+            entry["follow_note"] = f"could not mark folder: {err}"
+    elif res.status in ("lost", "ambiguous", "conflict"):
+        # Deliberately keeps the recorded path. An unplugged drive looks exactly
+        # like a deleted folder, and clearing the destination would turn a
+        # temporary absence into a permanent loss of where this label lives.
+        bus.publish({"type": "label_follow_lost", "url": entry["url"],
+                     "name": entry.get("name", ""), "status": res.status,
+                     "note": res.note, "destination": recorded})
+    return res.path
+
+
+def _mark_label_folder(entry: dict, link) -> str:
+    """Put this label's marker in the folder an entry names, so it can be followed."""
+    dest = (entry.get("destination") or "").strip()
+    if not dest or not Path(dest).is_dir():
+        return ""
+    err = labelfollow.write_anchor(dest, label_id=link.id, store=link.store,
+                                   label_url=entry.get("url", ""), label_name=entry.get("name", ""))
+    labelfollow.invalidate()
+    return err
+
+
+@app.post("/api/watch/refollow")
+def refollow_labels() -> dict:
+    """Re-locate every watched label's folder now, instead of at the next sweep.
+
+    The sweep does this by itself; this is for right after a reorganise, when
+    waiting six hours to find out whether the folders were picked up is the wrong
+    kind of suspense.
+    """
+    labelfollow.invalidate()
+    moved, lost = [], []
+    for entry in state.cfg.watched_labels:
+        try:
+            link = parse_url(entry["url"])
+        except Exception:
+            continue
+        before = (entry.get("destination") or "").strip()
+        after = _resolve_label_destination(entry, link)
+        if after and after != before:
+            moved.append({"name": entry.get("name", ""), "was": before, "now": after})
+        elif entry.get("follow_status") in ("lost", "ambiguous", "conflict"):
+            lost.append({"name": entry.get("name", ""), "status": entry["follow_status"],
+                         "note": entry.get("follow_note", "")})
+    if state.config_path:
+        config_module.save(state.cfg, state.config_path)
+    return {**_watch_response(), "moved": moved, "lost": lost}
 
 
 # ---- fully-downloaded labels ----------------------------------------------------
@@ -1374,6 +1564,75 @@ def _record_full_label_download(item: dict, run) -> None:
     )
     bus.publish({"type": "label_synced", "url": item["url"], "name": item.get("name", ""),
                  "synced_through": synced_through})
+    _mark_and_watch(item, run, synced_through)
+
+
+def _mark_and_watch(item: dict, run, synced_through: str) -> None:
+    """Mark the folder this label landed in, and start watching the label.
+
+    Downloading a label and watching it used to be unrelated acts, so the watch
+    list stayed empty however much was grabbed. This is also the one moment when
+    the folder holding this label is known for certain — by the time anyone asks
+    again it will have been moved into the library and renamed — so the marker
+    that makes it findable goes in here, whether or not the watch is wanted.
+    """
+    store = item.get("store") or "beatport"
+    label_id = int(item["id"])
+    raw_folder = getattr(run, "last_label_dir", "")
+    folder = raw_folder.strip() if isinstance(raw_folder, str) else ""
+    # A label download only gets a folder of its own when sort_by_context files it
+    # under the label template. Without that it landed loose in the shared
+    # downloads directory, which is not a label's home and must never be marked as
+    # one — the marker would then follow every unrelated download in there.
+    if folder and folder.rstrip("/") == (state.cfg.downloads_directory or "").rstrip("/"):
+        folder = ""
+    if folder and Path(folder).is_dir():
+        err = labelfollow.write_anchor(folder, label_id=label_id, store=store,
+                                       label_url=item["url"], label_name=item.get("name", ""))
+        labelfollow.invalidate()
+        if err:
+            folder = ""
+            bus.publish({"type": "watch_check_status",
+                         "message": f"could not mark {item.get('name', '')} folder: {err}"})
+    else:
+        folder = ""
+
+    existing = next((w for w in state.cfg.watched_labels if w.get("url") == item["url"]), None)
+    if existing is not None:
+        # Already watched — but a label watched BEFORE it was ever downloaded has no
+        # folder, so it files to staging forever even though the download just landed
+        # somewhere and marked it. Adopt that folder. A destination the user chose is
+        # never overwritten: this only fills a blank.
+        if folder and not (existing.get("destination") or "").strip():
+            existing["destination"] = folder
+            existing["follow_status"] = "ok"
+            existing["follow_note"] = ""
+            if state.config_path:
+                config_module.save(state.cfg, state.config_path)
+            bus.publish({"type": "label_followed", "url": item["url"],
+                         "name": existing.get("name", ""), "was": "",
+                         "destination": folder})
+        return
+    if not state.cfg.auto_watch_labels:
+        return
+    entry = {
+        "url": item["url"],
+        "name": item.get("name", ""),
+        "watched_since": datetime.now(timezone.utc).date().isoformat(),
+        # The whole catalogue has just been downloaded, so there is nothing left
+        # to baseline. Seeding the watermark with what was taken starts the label
+        # on incremental checks immediately instead of re-walking every release
+        # it has ever published on the first sweep.
+        _WATERMARK_KEY: synced_through,
+        "auto_watched": True,
+    }
+    if folder:
+        entry["destination"] = folder
+    state.cfg.watched_labels.append(entry)
+    if state.config_path:
+        config_module.save(state.cfg, state.config_path)
+    bus.publish({"type": "label_auto_watched", "url": item["url"], "name": entry["name"],
+                 "destination": folder, "synced_through": synced_through})
 
 
 # Per-label high-water mark: the newest Beatport publish_date this label has been
@@ -1382,12 +1641,19 @@ def _record_full_label_download(item: dict, run) -> None:
 _WATERMARK_KEY = "last_publish_date"
 
 
-def _watch_cfg(entry: dict | None = None) -> config_module.AppConfig:
+def _watch_cfg(entry: dict | None = None,
+               destination: str | None = None) -> config_module.AppConfig:
     """Config for unattended watch-list downloads. With watch_downloads_directory
     set they land in a staging folder instead of the library, one subfolder per
     label — a label's releases have no single home in the library, so staging and
     filing by hand beats guessing (see the field comment in config.py)."""
-    per_label = ((entry or {}).get("destination") or "").strip()
+    per_label = (destination if destination is not None
+                 else (entry or {}).get("destination") or "").strip()
+    # Only ever write into a per-label folder that is actually there. Creating it
+    # is what buries a download in a path the library was reorganised out of
+    # months ago; staging keeps it where it will be noticed instead.
+    if per_label and not Path(per_label).is_dir():
+        per_label = ""
     staging = (state.cfg.watch_downloads_directory or "").strip()
     target = per_label or staging
     if not target:
@@ -1447,6 +1713,9 @@ def _check_watched_label(entry: dict) -> dict:
     client = _client_for(link.store)
     label_url = entry["url"]
     today = datetime.now(timezone.utc).date()
+    # Settled before anything is fetched, so a folder that moved is picked up on
+    # this check rather than a download landing in the old path first.
+    destination = _resolve_label_destination(entry, link)
 
     # A label whose catalogue was fully downloaded is measured from THAT date, not
     # from when it happened to be added to the watch list. Without this, a label
@@ -1520,7 +1789,8 @@ def _check_watched_label(entry: dict) -> dict:
     total_tracks = 0
     download_failed = False
     if new_releases:
-        run = App(_watch_cfg(entry), state.bp, state.bs, on_event=bus.publish)
+        run = App(_watch_cfg(entry, destination=destination), state.bp, state.bs,
+                  on_event=bus.publish)
         for release in new_releases:
             try:
                 run.handle_url(release.store_url())

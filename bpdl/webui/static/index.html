@@ -91,13 +91,23 @@
       <p id="input-status" class="muted small"></p>
 
       <div class="section-head">
-        <h2><span data-i18n="watch.title">Release watch</span> <span id="watch-count" class="count-badge">0</span></h2>
+        <h2><span data-i18n="watch.title">Watched labels &amp; artists</span> <span id="watch-count" class="count-badge">0</span></h2>
         <div class="section-actions">
           <button id="watch-check-now-btn" class="btn ghost small" data-i18n="watch.check_now">Check now</button>
-          <button id="watch-clear-btn" class="btn ghost small" data-i18n="watch.clear_all">Clear all</button>
+          <button id="watch-refollow-btn" class="btn ghost small" data-i18n="watch.refollow" title="Re-locate every watched label's folder now">Re-find folders</button>
+          <button id="watch-clear-btn" class="btn ghost small" data-i18n="watch.clear_all">Stop watching all</button>
         </div>
       </div>
       <p class="muted small watch-blurb" data-i18n="watch.blurb">Watched labels get every new release grabbed automatically; watched artists get their new tracks. Check interval lives in Settings.</p>
+      <details class="watch-help">
+        <summary data-i18n="watch.help_title">How the watcher decides what to grab</summary>
+        <ol>
+          <li data-i18n="watch.help_dates"><b>From / To filter Beatport's <i>publish</i> date</b> — the day Beatport listed the release, not the day it originally came out. A 1998 record added to Beatport last week has a 2026 publish date. Leave both blank and the label simply carries on from where it was last downloaded in full.</li>
+          <li data-i18n="watch.help_folder"><b>Folder must be a path this app can see.</b> The library is mounted here as <code>/music/…</code>. A <code>/mnt/usb-a/drive/Music/…</code> path is the host's name for it and will not work. Leave blank to drop new releases in the staging folder instead.</li>
+          <li data-i18n="watch.help_follow"><b>Folders are followed, not remembered.</b> A label downloaded in full is marked with a small hidden <code>.bpdl-label.json</code> file. Move that folder into the library, or rename it, and the next check finds it again and keeps filing new releases into it. Delete the file and the folder simply stops being followed.</li>
+          <li data-i18n="watch.help_nothing"><b>"0 new" is usually correct.</b> It means nothing has been published for that label since its date. The two dates on a card are not the same claim: <i>held to …</i> means the catalogue is on disk up to there, <i>looked as far as …</i> only means the watcher has looked that far.</li>
+        </ol>
+      </details>
       <div class="watch-add-row">
         <input id="watch-url-input" type="text" data-i18n-placeholder="watch.placeholder" placeholder="Paste a label or artist URL to watch…">
         <input id="watch-dest-input" type="text" data-i18n-placeholder="watch.dest_ph" placeholder="optional: /music/GENRE/LABELS_&amp;_USBs/Label">
@@ -110,28 +120,20 @@
       <div id="watch-list" class="chip-list"></div>
       <p id="watch-status" class="muted small"></p>
 
-      <div id="held-section" class="held-section hidden">
-        <h3 data-i18n="held.title">Already downloaded in full</h3>
-        <p class="muted small" data-i18n="held.blurb">
-          These labels are held up to the date shown, so watching one tops it up from
-          exactly there instead of re-walking the whole catalogue.
-        </p>
-        <div id="held-list" class="chip-list"></div>
-      </div>
-
-      <div class="held-mark">
+      <details class="held-mark">
+        <summary data-i18n="held.mark_title">Add a label you already own</summary>
         <p class="muted small" data-i18n="held.mark_blurb">
-          Already have a label from before, or filed by hand? Say so here and it will be
-          topped up from that point rather than treated as brand new. Leave the date empty
-          for "I have all of it as of now".
+          Downloaded elsewhere, or filed by hand? Say so here and it joins the list above
+          as held to that date, so watching it tops up from there instead of re-walking the
+          whole catalogue. Leave the date empty for "I have all of it as of now".
         </p>
         <div class="watch-add-row">
           <input id="held-url-input" type="text" data-i18n-placeholder="held.url_ph" placeholder="Paste the label URL…">
           <input id="held-date-input" type="date" title="Held up to (optional)">
-          <button id="held-mark-btn" class="btn ghost" data-i18n="held.mark">Mark as downloaded</button>
+          <button id="held-mark-btn" class="btn ghost" data-i18n="held.mark">Add as already owned</button>
         </div>
         <p id="held-status" class="muted small"></p>
-      </div>
+      </details>
 
       <div class="section-head">
         <h2><span data-i18n="explore.title">Explore</span> <span class="muted small" id="explore-count"></span></h2>
@@ -357,6 +359,9 @@
           <div class="field checkbox"><label><input name="fix_tags" type="checkbox"> <span data-i18n="settings.fix_tags">Fix/normalize tags after download</span></label></div>
           <div class="field checkbox"><label><input name="keep_cover" type="checkbox"> <span data-i18n="settings.keep_cover">Keep cover.jpg in release folders</span></label></div>
           <div class="field checkbox"><label><input name="skip_previously_downloaded" type="checkbox"> <span data-i18n="settings.skip_downloaded">Skip tracks already downloaded before</span></label></div>
+          <div class="field checkbox"><label><input name="auto_watch_labels" type="checkbox"> <span data-i18n="settings.auto_watch">Watch a label automatically once its whole catalogue is downloaded</span></label>
+            <small data-i18n="settings.auto_watch_help">Its folder is marked at the same time, so new releases follow it if you move or rename it. Turn this off and labels are only watched when you press Watch.</small>
+          </div>
           <div class="field"><label data-i18n="settings.tpl_release">Release folder template</label><input name="release_directory_template" type="text"></div>
           <div class="field"><label data-i18n="settings.tpl_label">Label folder template</label><input name="label_directory_template" type="text"></div>
           <div class="field"><label data-i18n="settings.tpl_artist">Artist folder template</label><input name="artist_directory_template" type="text"></div>

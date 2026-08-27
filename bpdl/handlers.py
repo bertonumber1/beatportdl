@@ -41,6 +41,12 @@ class App:
         # stream). None in normal CLI/TUI use, where rich console.print is enough.
         self.on_event = on_event
         self.cancelled = threading.Event()
+        # The folder a label link actually wrote into. The templates make this
+        # non-obvious (`{name} [{updated_date}]` under a sorted downloads dir),
+        # and the caller needs the real path to be able to follow that folder
+        # later — re-deriving it from config would drift the moment a template
+        # changes. Set by _handle_label_link; None for every other link type.
+        self.last_label_dir: str | None = None
 
     def cancel(self) -> None:
         """Cooperative cancellation: stops new work from being submitted/started.
@@ -285,6 +291,7 @@ class App:
             return
 
         downloads_dir = self._setup_downloads_dir(self.cfg.downloads_directory, label, "label")
+        self.last_label_dir = downloads_dir
 
         def on_release(release, _i):
             if self.cancelled.is_set():

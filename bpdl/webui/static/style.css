@@ -592,9 +592,32 @@ input:focus, select:focus {
   word-break: break-word;
 }
 
-.held-section { margin-top: 14px; }
-.held-section h3 { font-size: 13px; margin: 0 0 4px; }
-.held-mark { margin-top: 12px; }
+/* Every row in the watch list is the same card, whether the label is being watched
+   or only recorded as held. Two sections with two vocabularies read as two separate
+   watchers, which is exactly the confusion this collapses. */
+.watch-card { cursor: default; flex-direction: column; align-items: stretch; gap: 5px; }
+.watch-card-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.watch-name { flex: 1; min-width: 120px; }
+.watch-mark { color: var(--muted); font-size: 10.5px; white-space: nowrap; }
+.watch-group-head { margin: 10px 0 2px; font-weight: 600; letter-spacing: .3px; }
+.watch-group-head:first-child { margin-top: 4px; }
+
+/* The one thing a person needs to read off a row at a glance: is anything
+   automatic happening to this label, or is it just a record? */
+.watch-state {
+  font-size: 9.5px; letter-spacing: .5px; text-transform: uppercase;
+  padding: 1px 6px; border-radius: 999px; border: 1px solid currentColor; white-space: nowrap;
+}
+.watch-state.on { color: var(--accent); background: var(--accent-dim); }
+.watch-state.off { color: var(--muted); background: transparent; }
+
+.watch-actions { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 2px; }
+.watch-actions .btn { padding: 2px 8px; font-size: 10.5px; line-height: 1.6; }
+
+.held-mark { margin-top: 12px; font-size: 12px; }
+.held-mark > summary { cursor: pointer; color: var(--muted); user-select: none; }
+.held-mark > summary:hover { color: var(--fg); }
+.held-mark .watch-add-row { margin-top: 8px; }
 .held-mark .watch-add-row input[type="date"] { flex: 0 0 auto; }
 
 .watch-skip-row { display: flex; align-items: center; gap: 8px; margin: 0 0 10px; font-size: 12px; color: var(--muted); cursor: pointer; }
@@ -602,5 +625,21 @@ input:focus, select:focus {
 .btn.ghost.small.danger { color: var(--danger, #e5534b); border-color: currentColor; }
 .btn.ghost.small.danger:hover { background: rgba(229,83,75,.12); }
 
-/* compact, so it sits against the date without crowding the label name */
-.watch-item .btn.ghost.small.danger { padding: 2px 8px; font-size: 10.5px; line-height: 1.6; }
+
+/* Release-watch "how it works" note. Collapsed by default so it explains the two
+   things people get wrong (publish-date vs release-date, host path vs mounted path)
+   without permanently taking up room above the watch list. */
+.watch-help { margin: 2px 0 8px; font-size: 12px; }
+.watch-help > summary { cursor: pointer; color: var(--muted, #8a8f98); user-select: none; }
+.watch-help > summary:hover { color: var(--fg, #e8e8ea); }
+.watch-help ol { margin: 6px 0 0; padding-left: 18px; }
+.watch-help li { margin: 4px 0; line-height: 1.45; color: var(--muted, #8a8f98); }
+.watch-help code { font-size: 11px; padding: 0 3px; border-radius: 3px;
+                   background: rgba(127,127,127,.18); }
+
+/* Where a watched label is being filed. Muted while it is fine, and loud when the
+   folder can no longer be found — that line is the only warning that new releases
+   are going to staging instead of into the library. */
+.watch-follow { font-size: 11px; color: var(--muted, #8a8f98); word-break: break-all; }
+.watch-follow.bad { color: var(--warn, #e0a33e); }
+

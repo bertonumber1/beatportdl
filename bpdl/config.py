@@ -89,6 +89,7 @@ _DEFAULTS = dict(
     watch_interval_hours=6,
     watch_downloads_directory="",
     watch_lookback_days=14,
+    auto_watch_labels=True,
     notify_webhook_url="",
 )
 
@@ -157,6 +158,16 @@ class AppConfig:
     # server-side publish_date=X: filter would never show it to us again.
     watch_lookback_days: int = 14
 
+    # Start watching a label as soon as its whole catalogue has been downloaded.
+    # Without this, downloading a label and watching it are unrelated acts and the
+    # watch list stays empty however much gets grabbed. Off means the Release
+    # watch panel still offers a Watch button per held label — the manual route.
+    auto_watch_labels: bool = True
+    # Where to look for a label folder that has been moved or renamed, best place
+    # first: the library beats a stale copy left behind in the downloads folder.
+    # Empty = work it out at runtime from the library mount and the download dirs.
+    label_follow_roots: list[str] = field(default_factory=list)
+
     # Generic outbound notification hook — a plain HTTP POST, so it works with
     # Discord/Slack incoming webhooks, ntfy.sh, Gotify (URL includes its own
     # token query param), or any custom bot listening for a JSON POST. See
@@ -218,6 +229,8 @@ def parse(file_path: str | Path) -> AppConfig:
         watch_interval_hours=merged["watch_interval_hours"],
         watch_downloads_directory=merged["watch_downloads_directory"],
         watch_lookback_days=merged["watch_lookback_days"],
+        auto_watch_labels=merged["auto_watch_labels"],
+        label_follow_roots=raw.get("label_follow_roots") or [],
         notify_webhook_url=merged["notify_webhook_url"],
     )
 
@@ -283,6 +296,8 @@ def save(cfg: AppConfig, file_path: str | Path) -> None:
         "watch_interval_hours": cfg.watch_interval_hours,
         "watch_downloads_directory": cfg.watch_downloads_directory,
         "watch_lookback_days": cfg.watch_lookback_days,
+        "auto_watch_labels": cfg.auto_watch_labels,
+        "label_follow_roots": cfg.label_follow_roots,
         "notify_webhook_url": cfg.notify_webhook_url,
     }
     with open(path, "w") as f:

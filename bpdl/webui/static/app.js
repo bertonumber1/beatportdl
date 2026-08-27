@@ -1026,8 +1026,25 @@ function handleEvent(ev) {
       break;
     }
     case "label_synced":
-      showToast(`${ev.name}: full catalogue downloaded, tracked from ${ev.synced_through}. ` +
-                `Use "Update to latest" from now on.`, "success");
+      // Was a hardcoded English string that pointed at an "Update to latest"
+      // button — a name this panel no longer uses.
+      showToast(t("watch.full_downloaded", { name: ev.name, through: ev.synced_through }), "success");
+      refreshWatchList();
+      break;
+    case "label_auto_watched":
+      showToast(ev.destination
+        ? t("watch.auto_watched", { name: ev.name, folder: ev.destination })
+        : t("watch.auto_watched_staging", { name: ev.name }), "success");
+      refreshWatchList();
+      break;
+    case "label_followed":
+      showToast(t("watch.followed", { name: ev.name, folder: ev.destination }), "success");
+      refreshWatchList();
+      break;
+    case "label_follow_lost":
+      // Not an error the watcher can fix by itself, and not a lost download either:
+      // the releases went to staging. Say both, or it reads as a failure.
+      showToast(t("watch.follow_lost", { name: ev.name, note: ev.note }), "error");
       refreshWatchList();
       break;
     case "label_updated": {
@@ -1079,101 +1096,119 @@ async function openSettingsModal() {
 
 async function refreshWatchList() {
   const data = await api("GET", "/api/watch");
-  renderWatchList(data.watched_labels || [], data.watched_artists || []);
+  let held = [];
   try {
-    const held = await api("GET", "/api/label-syncs");
-    renderHeldLabels(held.labels || [], data.watched_labels || []);
+    held = (await api("GET", "/api/label-syncs")).labels || [];
   } catch (e) {
-    /* the held list is informational; never let it break the watch list */
+    /* the held marks are informational; never let them break the watch list */
   }
+  // One list, one vocabulary. A label that is downloaded but not watched used to
+  // live in its own section with its own words ("Already downloaded in full",
+  // "Watch"), which read as a second, separate watcher. It is the same label in a
+  // different state, so it is the same row with a different pill.
+  const watchedUrls = new Set((data.watched_labels || []).map((w) => w.url));
+  renderWatchList(
+    data.watched_labels || [],
+    data.watched_artists || [],
+    held.filter((h) => !watchedUrls.has(h.label_url)),
+  );
 }
 
-function renderHeldLabels(held, watched) {
-  // Downloading a label and watching it are separate acts, so a fully-downloaded label
-  // is invisible to the watcher until someone says so. List those, with the one button
-  // that connects them — watching from here starts at the recorded mark rather than
-  // re-walking the whole catalogue.
-  const wrap = $("#held-section");
-  const el = $("#held-list");
-  const urls = new Set(watched.map((w) => w.url));
-  const rows = held.filter((h) => !urls.has(h.label_url));
-  wrap.classList.toggle("hidden", rows.length === 0);
-  el.innerHTML = "";
-  rows.forEach((h) => {
-    const row = document.createElement("div");
-    row.className = "watch-item";
-    row.innerHTML = `
-      <div style="display:flex;align-items:center;gap:8px;">
-        <span style="flex:1;">${esc(h.label_name || h.label_url)}</span>
-        <span class="muted" style="font-size:10.5px;white-space:nowrap;">${esc(t("held.through", { through: h.synced_through }))}</span>
-      </div>`;
-    const btn = document.createElement("button");
-    btn.className = "btn ghost small";
-    btn.textContent = t("held.watch");
-    btn.title = t("held.watch_title", { through: h.synced_through });
-    btn.addEventListener("click", async () => {
-      btn.disabled = true;
-      try {
-        await api("POST", "/api/watch", { url: h.label_url });
-        showToast(t("held.now_watching", { name: h.label_name, through: h.synced_through }), "success");
-        await refreshWatchList();
-      } catch (e) {
-        btn.disabled = false;
-        showToast(e.message, "error");
-      }
-    });
-    row.appendChild(btn);
-    // "Clear all" only empties the WATCH list; a full-download mark survives it by
-    // design, so the only way to drop one was to edit the DB. Forgetting is
-    // deliberately per-label and confirmed: the mark is the record that the
-    // catalogue is held up to a date, and losing it makes the next watch
-    // re-baseline the whole back catalogue.
-    const del = document.createElement("button");
-    del.className = "btn ghost small danger";
-    del.textContent = t("held.forget");
-    del.title = t("held.forget_title");
-    del.addEventListener("click", async () => {
-      if (!confirm(t("held.forget_confirm", { name: h.label_name || h.label_url }))) return;
-      del.disabled = true;
-      try {
-        await api("DELETE", `/api/label-syncs/${h.label_id}`);
-        showToast(t("held.forgotten", { name: h.label_name }), "success");
-        await refreshWatchList();
-      } catch (e) {
-        del.disabled = false;
-        showToast(e.message, "error");
-      }
-    });
-    // Sits beside "held to <date>": removing a mark is an act on that date claim,
-    // so it belongs next to it rather than out with the Watch action.
-    row.querySelector("div").appendChild(del);
-    el.appendChild(row);
+function renderHeldRow(el, h) {
+  // Same card shape as a watched label, different state. The actions are the two
+  // that make sense for something held but not watched: start watching it, or top
+  // it up once without watching. Both are worded as checking, because that is what
+  // they do — "Update to latest" was a third name for the one idea.
+  const row = document.createElement("div");
+  row.className = "chip watch-card";
+  row.innerHTML = `
+    <div class="watch-card-head">
+      <span class="watch-name">${esc(h.label_name || h.label_url)}</span>
+      <span class="watch-state off">${esc(t("watchsec.state_off"))}</span>
+      <span class="watch-mark" title="${esc(t("watchsec.held_title"))}">${esc(t("watchsec.held_to", { through: h.synced_through }))}</span>
+    </div>
+    <span class="muted" style="font-size:11px;">${esc(t("held.not_watching_note"))}</span>`;
+
+  const actions = document.createElement("div");
+  actions.className = "watch-actions";
+
+  const watchBtn = document.createElement("button");
+  watchBtn.className = "btn ghost small";
+  watchBtn.textContent = t("held.watch");
+  watchBtn.title = t("held.watch_title", { through: h.synced_through });
+  watchBtn.addEventListener("click", async () => {
+    watchBtn.disabled = true;
+    try {
+      await api("POST", "/api/watch", { url: h.label_url });
+      showToast(t("held.now_watching", { name: h.label_name, through: h.synced_through }), "success");
+      await refreshWatchList();
+    } catch (e) {
+      watchBtn.disabled = false;
+      showToast(e.message, "error");
+    }
   });
+  actions.appendChild(watchBtn);
+
+  const once = document.createElement("button");
+  once.className = "btn ghost small";
+  once.textContent = t("watchsec.check_once");
+  once.title = t("watchsec.check_once_title", { through: h.synced_through });
+  once.addEventListener("click", () => updateLabelToLatest(h.label_url, once));
+  actions.appendChild(once);
+
+  // Forgetting the mark is destructive to the record (not to the files), so it is
+  // confirmed and visually separated from the two ordinary actions.
+  const del = document.createElement("button");
+  del.className = "btn ghost small danger";
+  del.textContent = t("held.forget");
+  del.title = t("held.forget_title");
+  del.addEventListener("click", async () => {
+    if (!confirm(t("held.forget_confirm", { name: h.label_name || h.label_url }))) return;
+    del.disabled = true;
+    try {
+      await api("DELETE", `/api/label-syncs/${h.label_id}`);
+      showToast(t("held.forgotten", { name: h.label_name }), "success");
+      await refreshWatchList();
+    } catch (e) {
+      del.disabled = false;
+      showToast(e.message, "error");
+    }
+  });
+  actions.appendChild(del);
+  row.appendChild(actions);
+  el.appendChild(row);
 }
 
-function renderWatchList(labels, artists) {
+function renderWatchList(labels, artists, held = []) {
   const el = $("#watch-list");
   el.innerHTML = "";
+  // The badge counts what is actually being watched. Held-but-unwatched labels are
+  // in the list for context, not because anything automatic is happening to them.
   $("#watch-count").textContent = labels.length + artists.length;
-  if (!labels.length && !artists.length) {
+  if (!labels.length && !artists.length && !held.length) {
     el.innerHTML = `<p class="muted small">${esc(t("watch.empty"))}</p>`;
     return;
   }
   renderWatchSection(el, t("watchsec.labels"), "label", labels);
   renderWatchSection(el, t("watchsec.artists"), "artist", artists);
+  if (held.length) {
+    const head = document.createElement("p");
+    head.className = "muted small watch-group-head";
+    head.textContent = t("watchsec.held_group");
+    el.appendChild(head);
+    held.forEach((h) => renderHeldRow(el, h));
+  }
 }
 
 function renderWatchSection(el, heading, kind, entries) {
   if (!entries.length) return;
   const head = document.createElement("p");
-  head.className = "muted small";
-  head.style.cssText = "margin:4px 0 2px;font-weight:600;letter-spacing:.3px;";
+  head.className = "muted small watch-group-head";
   head.textContent = heading;
   el.appendChild(head);
   entries.forEach((w, idx) => {
     const row = document.createElement("div");
-    row.className = "chip";
-    row.style.cssText = "cursor:default;flex-direction:column;align-items:stretch;gap:4px;position:relative;";
+    row.className = "chip watch-card";
     const pending = w.pending_releases || [];
     const many = pending.length > 1;
     const noun = kind === "artist"
@@ -1194,57 +1229,88 @@ function renderWatchSection(el, heading, kind, entries) {
       : w.last_checked_at
       ? t("watchsec.last_checked", { when: relTime(w.last_checked_at), found: w.last_check_found || 0 })
       : t("watchsec.never_checked");
+    // Where this label is actually being filed, and whether the folder is still
+    // findable. A card that only shows the recorded path looks fine right up until
+    // the moment the path stopped being true, which is exactly when it matters.
+    const followBad = ["lost", "ambiguous", "conflict"].includes(w.follow_status);
+    const followText = kind === "artist" || !w.destination
+      ? ""
+      : followBad
+      ? t("watchsec.follow_lost", { note: w.follow_note || w.follow_status, folder: w.destination })
+      : t("watchsec.follow_ok", { folder: w.destination });
     const sync = w.sync || null;
-    const mark = kind === "artist" ? "" : sync && sync.synced_through
-      ? t("watchsec.full_to", { through: sync.synced_through })
+    // Two claims of different strength, so they get different words rather than a
+    // shared "…to <date>" that hides which one you are looking at. A sync mark says
+    // the catalogue is ON DISK to that date; a watermark only says we LOOKED that far.
+    const held = kind !== "artist" && sync && sync.synced_through;
+    const mark = kind === "artist" ? "" : held
+      ? t("watchsec.held_to", { through: sync.synced_through })
       : w.last_publish_date
-      ? t("watchsec.checked_to", { date: w.last_publish_date })
+      ? t("watchsec.looked_to", { date: w.last_publish_date })
       : t("watchsec.not_checked");
+    const markTitle = held ? t("watchsec.held_title") : t("watchsec.looked_title");
     row.innerHTML = `
-      <div style="display:flex;align-items:center;gap:8px;">
-        <span style="flex:1;">${esc(w.name)}</span>
-        ${mark ? `<span class="muted" style="font-size:10.5px;white-space:nowrap;padding-right:14px;">${esc(mark)}</span>` : ""}
+      <div class="watch-card-head">
+        <span class="watch-name">${esc(w.name)}</span>
+        <span class="watch-state on">${esc(t("watchsec.state_on"))}</span>
+        ${mark ? `<span class="watch-mark" title="${esc(markTitle)}">${esc(mark)}</span>` : ""}
       </div>
       ${pendingText ? `<span class="muted" style="font-size:11px;">${esc(pendingText)}</span>` : ""}
       ${lastChecked ? `<span class="muted" style="font-size:11px;">${esc(lastChecked)}</span>` : ""}
+      ${followText ? `<span class="watch-follow ${followBad ? "bad" : ""}">${esc(followText)}</span>` : ""}
     `;
     if (kind === "label") {
       const range = document.createElement("div");
       range.className = "watch-range";
       range.innerHTML = `
-        <label class="watch-dest-label">${esc(t("watchsec.dest"))}<input type="text" class="watch-dest" placeholder="/music/GENRE/LABELS_&_USBs/Label" value="${esc(w.destination || "")}"></label>
-        <label>${esc(t("watchsec.from"))}<input type="date" class="watch-from" value="${esc(w.watch_from || "")}"></label>
-        <label>${esc(t("watchsec.to"))}<input type="date" class="watch-to" value="${esc(w.watch_to || "")}"></label>
+        <label class="watch-dest-label" title="${esc(t("watchsec.dest_help"))}">${esc(t("watchsec.dest"))}<input type="text" class="watch-dest" placeholder="/music/GENRE/LABELS_&_USBs/Label" title="${esc(t("watchsec.dest_help"))}" value="${esc(w.destination || "")}"></label>
+        <label title="${esc(t("watchsec.from_help"))}">${esc(t("watchsec.from"))}<input type="date" class="watch-from" title="${esc(t("watchsec.from_help"))}" value="${esc(w.watch_from || "")}"></label>
+        <label title="${esc(t("watchsec.to_help"))}">${esc(t("watchsec.to"))}<input type="date" class="watch-to" title="${esc(t("watchsec.to_help"))}" value="${esc(w.watch_to || "")}"></label>
         <label class="watch-rescan" title="${esc(t("watch.rescan_title"))}">
           <input type="checkbox" class="watch-rescan-box"> ${esc(t("watchsec.rescan"))}
         </label>
-        <button class="btn ghost small watch-range-save">${esc(t("watchsec.save_check"))}</button>
+        <button class="btn ghost small watch-range-save">${esc(t("watchsec.save"))}</button>
       `;
       range.querySelector(".watch-range-save").addEventListener("click", (ev) =>
         saveWatchRange(idx, range, ev.target));
       row.appendChild(range);
     }
-    if (kind === "label" && sync && sync.synced_through) {
-      const upd = document.createElement("button");
-      upd.className = "btn ghost small";
-      upd.style.cssText = "align-self:flex-start;margin-top:2px;";
-      upd.textContent = t("watch.update_latest");
-      upd.title = t("watch.update_latest_title", { through: sync.synced_through });
-      upd.addEventListener("click", () => updateLabelToLatest(w.url, upd));
-      row.appendChild(upd);
+    const actions = document.createElement("div");
+    actions.className = "watch-actions";
+    if (kind === "label") {
+      // One button, one word for it. This used to be "Update to latest" while the
+      // header said "Check now" and the range row said "Save & check now" — three
+      // names for going and looking, which is what made the panel read as several
+      // separate watchers.
+      const check = document.createElement("button");
+      check.className = "btn ghost small";
+      check.textContent = t("watchsec.check_one");
+      check.title = t("watchsec.check_one_title");
+      check.addEventListener("click", async () => {
+        check.disabled = true;
+        try {
+          await api("POST", `/api/watch/label/${idx}/check`);
+          showToast(t("watchsec.checking_one", { name: w.name }), "success");
+        } catch (e) {
+          showToast(e.message, "error");
+        } finally {
+          check.disabled = false;
+        }
+      });
+      actions.appendChild(check);
     }
     const removeBtn = document.createElement("button");
-    removeBtn.className = "card-remove";
-    removeBtn.title = t("watchsec.remove");
-    removeBtn.style.cssText = "position:absolute;top:4px;right:4px;";
-    removeBtn.innerHTML = "&times;";
+    removeBtn.className = "btn ghost small danger";
+    removeBtn.textContent = t("watchsec.remove");
+    removeBtn.title = t("watchsec.remove_title");
     removeBtn.addEventListener("click", async () => {
       await api("DELETE", `/api/watch/${kind}/${idx}`);
-      // Full refresh, not just the list: an unwatched label belongs back in the
-      // "already downloaded in full" section, which renderWatchList does not touch.
+      // Full refresh, not just the list: an unwatched label drops back to the held
+      // group at the bottom, which needs the label-syncs call to render.
       await refreshWatchList();
     });
-    row.appendChild(removeBtn);
+    actions.appendChild(removeBtn);
+    row.appendChild(actions);
     el.appendChild(row);
   });
 }
@@ -1557,6 +1623,33 @@ function wireEvents() {
       await api("POST", "/api/watch/check-now");
     } catch (e) {
       $("#watch-status").textContent = e.message;
+    }
+  });
+  $("#watch-refollow-btn").addEventListener("click", async (ev) => {
+    const btn = ev.currentTarget;
+    const was = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = t("watch.refollow_running");
+    try {
+      const res = await api("POST", "/api/watch/refollow");
+      const moved = res.moved || [];
+      const lost = res.lost || [];
+      showToast(
+        moved.length
+          ? t("watch.refollow_moved", { count: moved.length,
+              names: moved.map((m) => `${m.name} → ${m.now}`).join(", ") })
+          : lost.length
+          ? t("watch.refollow_lost", { count: lost.length,
+              names: lost.map((l) => l.name).join(", ") })
+          : t("watch.refollow_none"),
+        lost.length && !moved.length ? "error" : "success",
+      );
+      renderWatchList(res.watched_labels || [], res.watched_artists || []);
+    } catch (e) {
+      showToast(t("watch.refollow_failed", { error: e.message }), "error");
+    } finally {
+      btn.disabled = false;
+      btn.textContent = was;
     }
   });
   $("#explore-toggle").addEventListener("click", toggleExplore);

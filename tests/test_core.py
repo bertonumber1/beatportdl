@@ -588,6 +588,10 @@ def test_unfiltered_whole_label_download_records_the_mark(monkeypatch):
     monkeypatch.setattr(server, "_newest_publish_date", lambda client, lid: "2026-07-29")
     monkeypatch.setattr(server, "_client_for", lambda store: object())
     monkeypatch.setattr(server.bus, "publish", lambda ev: None)
+    # Auto-watch is a separate concern with its own tests; keep this one on the mark.
+    monkeypatch.setattr(server.state, "cfg",
+                        AppConfig(username="u", password="p", auto_watch_labels=False))
+    monkeypatch.setattr(server.state, "config_path", "")
 
     item = {"url": "https://www.beatport.com/label/x/1", "type": "labels", "id": 1,
             "store": "beatport", "name": "X", "filters": None}
@@ -935,6 +939,44 @@ def test_valid_destination_accepts_absolute_and_blank():
     assert server._valid_destination(None) == ""
 
 
+def test_destination_translates_host_path_to_mounted_path():
+    """The host path is what the file manager shows, so it is the natural thing to
+    type — but this process only ever sees the mount. Saving it unchanged failed six
+    hours later as '[Errno 13] Permission denied: /mnt/usb-a' in a status field."""
+    from bpdl.webui import server
+    assert server._valid_destination(
+        "/mnt/usb-a/drive/Music/UK_&_SPANISH_MAKINA_[FLAC]/LABELS_&_USBs/DNZ_RECORDS"
+    ) == "/music/UK_&_SPANISH_MAKINA_[FLAC]/LABELS_&_USBs/DNZ_RECORDS"
+    assert server._valid_destination(
+        "/mnt/usb-b/drive/downloads/-label-releases") == "/downloads/-label-releases"
+    # usb-a's downloads folder is mounted separately as the archive; mapping it to
+    # /downloads would silently write to the wrong drive.
+    assert server._valid_destination(
+        "/mnt/usb-a/drive/downloads/old") == "/downloads-archive/old"
+    # already-correct paths are untouched
+    assert server._valid_destination("/music/GENRE/Label") == "/music/GENRE/Label"
+
+
+def test_destination_rejects_unreachable_host_path():
+    """A /mnt path that is neither mapped nor present cannot be written to, so it is
+    refused while the person is looking at the form rather than on the next sweep."""
+    from bpdl.webui import server
+    from fastapi import HTTPException
+    import pytest as _pytest
+    with _pytest.raises(HTTPException) as e:
+        server._valid_destination("/mnt/nowhere/Some Label")
+    assert "/music" in str(e.value.detail)
+
+
+def test_destination_prefix_match_respects_boundaries():
+    """'/mnt/usb-a/drive/MusicOther' must not be rewritten by the '/drive/Music' rule."""
+    from bpdl.webui import server
+    from fastapi import HTTPException
+    import pytest as _pytest
+    with _pytest.raises(HTTPException):
+        server._valid_destination("/mnt/usb-a/drive/MusicOther/Label")
+
+
 def test_valid_destination_rejects_relative_path():
     from bpdl.webui import server
     from fastapi import HTTPException
@@ -951,6 +993,7 @@ def test_watch_cfg_prefers_per_label_destination_over_staging(monkeypatch, tmp_p
     from bpdl.webui import server
     from bpdl.config import AppConfig
     dest = tmp_path / "music" / "MAKINA" / "DNZ"
+    dest.mkdir(parents=True)
     staging = tmp_path / "staging"
     monkeypatch.setattr(server.state, "cfg",
                         AppConfig(username="u", password="p",
@@ -958,7 +1001,22 @@ def test_watch_cfg_prefers_per_label_destination_over_staging(monkeypatch, tmp_p
     cfg = server._watch_cfg({"destination": str(dest)})
     assert cfg.downloads_directory == str(dest)
     assert cfg.sort_by_label is False
-    assert dest.is_dir()          # created, so the first download cannot fail on it
+
+
+def test_watch_cfg_stages_instead_of_recreating_a_vanished_destination(monkeypatch, tmp_path):
+    """The destination folder is gone — reorganised away, or its drive is not
+    mounted. Re-creating it files the download into a path nobody opens again, so
+    the releases go to staging and stay visible instead."""
+    from bpdl.webui import server
+    from bpdl.config import AppConfig
+    dest = tmp_path / "music" / "MOVED_AWAY"          # deliberately never created
+    staging = tmp_path / "staging"
+    monkeypatch.setattr(server.state, "cfg",
+                        AppConfig(username="u", password="p",
+                                  watch_downloads_directory=str(staging)))
+    cfg = server._watch_cfg({"destination": str(dest)})
+    assert cfg.downloads_directory == str(staging)
+    assert not dest.exists()
 
 
 def test_watch_cfg_falls_back_to_staging_when_no_destination(monkeypatch, tmp_path):
@@ -977,6 +1035,7 @@ def test_watched_label_downloads_into_its_own_destination(monkeypatch, tmp_path)
     """End to end: the destination on the watch entry is the directory the
     downloader is actually handed."""
     dest = tmp_path / "music" / "MAKINA" / "LABELS_&_USBs" / "DNZ_RECORDS"
+    dest.mkdir(parents=True)
     rel = _release(1, "New One", "2026-08-01", "2026-08-01T00:00:00-06:00")
     h = _WatchHarness([rel])
     entry = {"url": "https://www.beatport.com/label/dnz-records/1",
@@ -996,6 +1055,7 @@ def test_library_destination_can_never_overwrite(monkeypatch, tmp_path):
     from bpdl.webui import server
     from bpdl.config import AppConfig
     dest = tmp_path / "music" / "MAKINA" / "DNZ"
+    dest.mkdir(parents=True)
     monkeypatch.setattr(server.state, "cfg",
                         AppConfig(username="u", password="p",
                                   track_exists="overwrite",
@@ -1040,3 +1100,320 @@ def test_destination_never_strips_a_bare_root():
     from bpdl.webui import server
     assert server._valid_destination("/") == "/"
     assert server._valid_destination("C:\\") == "C:\\"
+
+
+# --- following a label's folder when it moves ------------------------------------
+# The library gets reorganised constantly, and a watch entry that remembers only a
+# path is stale the moment a folder is moved or renamed. These cover the marker
+# that makes the folder recognisable again, and — more importantly — the cases
+# where it must REFUSE to guess.
+
+@pytest.fixture(autouse=True)
+def _clear_follow_index():
+    """The marked-folder index is cached for a couple of minutes so one sweep does
+    one walk. Tests build a new tree per case, so the cache has to go between them."""
+    from bpdl import labelfollow
+    labelfollow.invalidate()
+    yield
+    labelfollow.invalidate()
+
+
+def _mark(folder, label_id=1, store="beatport", name="DNZ Records"):
+    from bpdl import labelfollow
+    folder.mkdir(parents=True, exist_ok=True)
+    assert labelfollow.write_anchor(folder, label_id=label_id, store=store,
+                                    label_url=f"https://www.beatport.com/label/x/{label_id}",
+                                    label_name=name) == ""
+    return folder
+
+
+def test_marker_round_trips(tmp_path):
+    from bpdl import labelfollow
+    folder = _mark(tmp_path / "DNZ")
+    data = labelfollow.read_anchor(folder)
+    assert labelfollow.anchor_matches(data, 1, "beatport")
+    assert not labelfollow.anchor_matches(data, 2, "beatport")
+    assert not labelfollow.anchor_matches(data, 1, "beatsource")
+
+
+def test_marker_survives_a_rename_and_a_move(tmp_path):
+    """The whole point: the folder is renamed AND moved to another tree, and is
+    still identified — which no amount of folder-name matching can do."""
+    from bpdl import labelfollow
+    downloads = tmp_path / "downloads"
+    library = tmp_path / "music"
+    library.mkdir()
+    old = _mark(downloads / "beatport" / "DNZ Records [2026-08-26]")
+    new = library / "MAKINA" / "LABELS_&_USBs" / "DNZ_RECORDS"
+    new.parent.mkdir(parents=True)
+    old.rename(new)
+
+    res = labelfollow.resolve(str(old), 1, "beatport", [str(library), str(downloads)])
+    assert res.status == "moved"
+    assert res.path == str(new)
+
+
+def test_a_stale_empty_folder_left_behind_does_not_win(tmp_path):
+    """The failure this feature exists to prevent. An earlier run created the old
+    path, the contents were moved out, and the empty shell remains. Trusting the
+    recorded path files every future release into a folder nobody opens."""
+    from bpdl import labelfollow
+    library = tmp_path / "music"
+    stale = library / "OLD_GENRE" / "DNZ"
+    stale.mkdir(parents=True)                      # exists, but carries no marker
+    real = _mark(library / "MAKINA" / "DNZ_RECORDS")
+
+    res = labelfollow.resolve(str(stale), 1, "beatport", [str(library)])
+    assert res.status == "moved"
+    assert res.path == str(real)
+
+
+def test_the_library_copy_beats_a_copy_left_in_downloads(tmp_path):
+    """Copying rather than moving leaves the marker in two places. The library is
+    where it was meant to end up, so root order decides it instead of an
+    ambiguity the person has to resolve by hand."""
+    from bpdl import labelfollow
+    library = tmp_path / "music"
+    downloads = tmp_path / "downloads"
+    kept = _mark(library / "MAKINA" / "DNZ_RECORDS")
+    _mark(downloads / "beatport" / "DNZ Records [2026-08-26]")
+
+    res = labelfollow.resolve(str(downloads / "gone"), 1, "beatport",
+                              [str(library), str(downloads)])
+    assert res.status == "moved"
+    assert res.path == str(kept)
+
+
+def test_two_marked_folders_in_the_same_root_refuse_to_guess(tmp_path):
+    from bpdl import labelfollow
+    library = tmp_path / "music"
+    _mark(library / "GABBER" / "5th Gear")
+    _mark(library / "MULTI_GENRE" / "5th Gear")
+
+    res = labelfollow.resolve(str(library / "gone"), 1, "beatport", [str(library)])
+    assert res.status == "ambiguous"
+    assert res.path == ""                      # no path: the caller uses staging
+    assert len(res.candidates) == 2
+
+
+def test_a_folder_marked_for_another_label_is_never_written_into(tmp_path):
+    from bpdl import labelfollow
+    library = tmp_path / "music"
+    theirs = _mark(library / "MAKINA" / "SOMEONE_ELSE", label_id=99, name="Other")
+
+    res = labelfollow.resolve(str(theirs), 1, "beatport", [str(library)])
+    assert res.status == "conflict"
+    assert res.path == ""
+    # and the marker is left exactly as it was
+    assert labelfollow.read_anchor(theirs)["label_id"] == 99
+    assert labelfollow.write_anchor(theirs, label_id=1, store="beatport") != ""
+    assert labelfollow.read_anchor(theirs)["label_id"] == 99
+
+
+def test_an_unmarked_folder_that_is_still_there_gets_adopted(tmp_path):
+    """Watch entries created before markers existed still name a real folder.
+    Nothing else claims the label, so the folder is claimed rather than abandoned."""
+    from bpdl import labelfollow
+    library = tmp_path / "music"
+    here = library / "MAKINA" / "DNZ"
+    here.mkdir(parents=True)
+
+    res = labelfollow.resolve(str(here), 1, "beatport", [str(library)])
+    assert res.status == "adopted"
+    assert res.path == str(here)
+
+
+def test_a_folder_that_is_simply_gone_reports_lost(tmp_path):
+    from bpdl import labelfollow
+    library = tmp_path / "music"
+    library.mkdir()
+    res = labelfollow.resolve(str(library / "NEVER_EXISTED"), 1, "beatport", [str(library)])
+    assert res.status == "lost"
+    assert res.path == ""
+
+
+def test_an_unfinished_scan_is_not_reported_as_lost(tmp_path):
+    """A sleeping USB disk stalls the walk. Calling that 'lost' and clearing the
+    destination would turn a slow disk into a permanently forgotten folder."""
+    from bpdl import labelfollow
+    library = tmp_path / "music"
+    _mark(library / "MAKINA" / "DNZ")
+    res = labelfollow.resolve(str(library / "gone"), 1, "beatport", [str(library)],
+                              budget=-1.0, use_cache=False)
+    assert res.status == "unscanned"
+    assert res.path == ""
+
+
+def test_the_index_does_not_descend_into_a_marked_folder(tmp_path):
+    """A label folder holds releases, not other labels. Stopping there is what
+    keeps a 40,000-folder library cheap to scan."""
+    from bpdl import labelfollow
+    library = tmp_path / "music"
+    outer = _mark(library / "MAKINA" / "DNZ")
+    _mark(outer / "[DNZ001] Someone - Thing", label_id=1)   # would be a duplicate hit
+    found, complete = labelfollow.find(1, "beatport", [str(library)], use_cache=False)
+    assert complete
+    assert found == [str(outer)]
+
+
+# --- the server side: entries follow, and downloads follow with them --------------
+
+def test_watch_entry_updates_itself_when_the_folder_moves(monkeypatch, tmp_path):
+    from bpdl.webui import server
+    from bpdl.links import parse_url
+    library = tmp_path / "music"
+    new = _mark(library / "MAKINA" / "DNZ_RECORDS")
+    entry = {"url": "https://www.beatport.com/label/dnz/1", "name": "DNZ Records",
+             "destination": str(library / "OLD" / "DNZ")}
+    monkeypatch.setattr(server, "_follow_roots", lambda: [str(library)])
+    monkeypatch.setattr(server.bus, "publish", lambda ev: None)
+
+    assert server._resolve_label_destination(entry, parse_url(entry["url"])) == str(new)
+    assert entry["destination"] == str(new)       # persisted, so next time is O(1)
+    assert entry["follow_status"] == "moved"
+
+
+def test_a_lost_folder_keeps_its_recorded_path(monkeypatch, tmp_path):
+    """An unplugged drive is indistinguishable from a deleted folder. Forgetting
+    the path would make a temporary absence permanent."""
+    from bpdl.webui import server
+    from bpdl.links import parse_url
+    library = tmp_path / "music"
+    library.mkdir()
+    recorded = str(library / "MAKINA" / "DNZ")
+    entry = {"url": "https://www.beatport.com/label/dnz/1", "name": "DNZ Records",
+             "destination": recorded}
+    monkeypatch.setattr(server, "_follow_roots", lambda: [str(library)])
+    monkeypatch.setattr(server.bus, "publish", lambda ev: None)
+
+    assert server._resolve_label_destination(entry, parse_url(entry["url"])) == ""
+    assert entry["destination"] == recorded
+    assert entry["follow_status"] == "lost"
+
+
+def test_a_watched_label_downloads_into_the_folder_it_moved_to(monkeypatch, tmp_path):
+    """End to end: the entry still names the old path, the marker is somewhere
+    else, and the downloader is handed the new folder."""
+    library = tmp_path / "music"
+    new = _mark(library / "MAKINA" / "DNZ_RECORDS")
+    rel = _release(1, "New One", "2026-08-01", "2026-08-01T00:00:00-06:00")
+    entry = {"url": "https://www.beatport.com/label/dnz/1", "name": "DNZ Records",
+             "watched_since": "2026-01-01", "destination": str(library / "OLD" / "DNZ")}
+    h = _WatchHarness([rel])
+    server = h.install(monkeypatch, entry, staging=str(tmp_path / "staging"))
+    monkeypatch.setattr(server, "_follow_roots", lambda: [str(library)])
+
+    server._check_watched_label(entry)
+    assert h.cfg_seen.downloads_directory == str(new)
+    assert h.cfg_seen.track_exists == "skip"      # add-only into the library, always
+
+
+# --- downloading a label starts watching it --------------------------------------
+
+def _full_label_download(monkeypatch, tmp_path, *, label_dir, auto=True, watched=None):
+    from bpdl.webui import server
+    from bpdl.config import AppConfig
+    events = []
+    monkeypatch.setattr(server.history, "record_label_sync", lambda **kw: None)
+    monkeypatch.setattr(server, "_newest_publish_date", lambda client, lid: "2026-08-20")
+    monkeypatch.setattr(server, "_client_for", lambda store: object())
+    monkeypatch.setattr(server.bus, "publish", lambda ev: events.append(ev))
+    cfg = AppConfig(username="u", password="p", auto_watch_labels=auto,
+                    downloads_directory=str(tmp_path / "downloads"),
+                    watched_labels=list(watched or []))
+    monkeypatch.setattr(server.state, "cfg", cfg)
+    monkeypatch.setattr(server.state, "config_path", "")
+    item = {"url": "https://www.beatport.com/label/dnz/1", "type": "labels", "id": 1,
+            "store": "beatport", "name": "DNZ Records", "filters": None}
+    run = mock.Mock(stats=mock.Mock(failed=0, downloaded=42))
+    run.last_label_dir = str(label_dir) if label_dir else ""
+    server._record_full_label_download(item, run)
+    return cfg, events
+
+
+def test_downloading_a_whole_label_starts_watching_it(monkeypatch, tmp_path):
+    from bpdl import labelfollow
+    folder = tmp_path / "downloads" / "DNZ Records [2026-08-26]"
+    folder.mkdir(parents=True)
+    cfg, events = _full_label_download(monkeypatch, tmp_path, label_dir=folder)
+
+    assert [w["name"] for w in cfg.watched_labels] == ["DNZ Records"]
+    entry = cfg.watched_labels[0]
+    assert entry["destination"] == str(folder)
+    # Seeded with what was just taken: the catalogue is held, so the first sweep
+    # is an incremental check, not a full re-walk of every release ever published.
+    assert entry[server_watermark()] == "2026-08-20"
+    assert entry["auto_watched"] is True
+    # and the folder is marked, so moving it into the library keeps it followed
+    assert labelfollow.anchor_matches(labelfollow.read_anchor(folder), 1, "beatport")
+    assert any(e["type"] == "label_auto_watched" for e in events)
+
+
+def server_watermark():
+    from bpdl.webui import server
+    return server._WATERMARK_KEY
+
+
+def test_auto_watch_can_be_turned_off_but_the_folder_is_still_marked(monkeypatch, tmp_path):
+    """The marker is not the watch. Marking regardless means a label watched by
+    hand months later still knows which folder is its own."""
+    from bpdl import labelfollow
+    folder = tmp_path / "downloads" / "DNZ Records [2026-08-26]"
+    folder.mkdir(parents=True)
+    cfg, _ = _full_label_download(monkeypatch, tmp_path, label_dir=folder, auto=False)
+    assert cfg.watched_labels == []
+    assert labelfollow.read_anchor(folder) is not None
+
+
+def test_auto_watch_does_not_duplicate_an_existing_entry(monkeypatch, tmp_path):
+    folder = tmp_path / "downloads" / "DNZ Records [2026-08-26]"
+    folder.mkdir(parents=True)
+    existing = {"url": "https://www.beatport.com/label/dnz/1", "name": "DNZ Records",
+                "watched_since": "2026-01-01", "watch_from": "2020-01-01"}
+    cfg, _ = _full_label_download(monkeypatch, tmp_path, label_dir=folder,
+                                  watched=[existing])
+    assert len(cfg.watched_labels) == 1
+    assert cfg.watched_labels[0]["watch_from"] == "2020-01-01"   # left alone
+
+
+def test_the_shared_downloads_folder_is_never_marked_as_a_label(monkeypatch, tmp_path):
+    """With sort_by_context off, a label lands loose in the downloads directory.
+    Marking that would make every unrelated download follow the label around."""
+    from bpdl import labelfollow
+    downloads = tmp_path / "downloads"
+    downloads.mkdir()
+    cfg, _ = _full_label_download(monkeypatch, tmp_path, label_dir=downloads)
+    assert labelfollow.read_anchor(downloads) is None
+    # still watched — just from staging, with no folder of its own to follow
+    assert cfg.watched_labels[0].get("destination") is None
+
+
+def test_a_label_watched_before_it_was_downloaded_adopts_the_folder(monkeypatch, tmp_path):
+    """The gap this closes: watching a label first and downloading it later left the
+    entry with no folder, so it filed to staging forever even though the download
+    had just landed somewhere and marked it."""
+    from bpdl import labelfollow
+    folder = tmp_path / "downloads" / "Baby's Back [2026-08-27]"
+    folder.mkdir(parents=True)
+    watched = {"url": "https://www.beatport.com/label/dnz/1", "name": "DNZ Records",
+               "watched_since": "2026-01-01"}                     # no destination
+    cfg, events = _full_label_download(monkeypatch, tmp_path, label_dir=folder,
+                                       watched=[watched])
+    assert len(cfg.watched_labels) == 1                            # not duplicated
+    assert cfg.watched_labels[0]["destination"] == str(folder)
+    assert labelfollow.anchor_matches(labelfollow.read_anchor(folder), 1, "beatport")
+    assert any(e["type"] == "label_followed" for e in events)
+
+
+def test_a_folder_the_user_chose_is_never_overwritten_by_a_download(monkeypatch, tmp_path):
+    """Adopting a folder fills a blank; it must not move a label the user has
+    deliberately pointed at a library folder to wherever the last download landed."""
+    chosen = tmp_path / "music" / "MAKINA" / "DNZ"
+    chosen.mkdir(parents=True)
+    folder = tmp_path / "downloads" / "DNZ Records [2026-08-27]"
+    folder.mkdir(parents=True)
+    watched = {"url": "https://www.beatport.com/label/dnz/1", "name": "DNZ Records",
+               "watched_since": "2026-01-01", "destination": str(chosen)}
+    cfg, _ = _full_label_download(monkeypatch, tmp_path, label_dir=folder,
+                                  watched=[watched])
+    assert cfg.watched_labels[0]["destination"] == str(chosen)

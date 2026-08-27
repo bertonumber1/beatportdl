@@ -122,6 +122,51 @@ so nothing else needs touching. `tests/test_i18n.py` then enforces that the new 
 exactly the English key set, keeps every `{placeholder}` intact, and leaves no string
 untranslated.
 
+### The watch list
+
+One panel, one list, one set of words. Every label and artist bpdl knows about appears as a
+row with a state:
+
+* **Watching** — its new releases are downloaded automatically on the interval in Settings,
+  into the folder shown on the row.
+* **Not watching** — the label is on disk and recorded as held to a date, but nothing
+  automatic happens to it. Start watching it, or check it once by hand.
+
+The two dates a row can show are different claims and are worded differently on purpose:
+*held to <date>* means the catalogue is on disk up to that Beatport publish date (a full
+download was recorded), while *looked as far as <date>* only means the watcher has looked
+that far. Only the first is a statement about your files.
+
+### Watching a label, and following its folder
+
+A label you download in full starts being watched straight away, and its folder is marked so
+the watcher can find it again after you file it.
+
+* **Auto-watch.** When a label is queued unfiltered ("queue everything") and every track
+  succeeds, the whole catalogue is recorded as held, the label joins the watch list, and its
+  mark is seeded with what was just taken — so the first scheduled check is an incremental
+  top-up, not a re-walk of the entire catalogue. Turn it off in Settings → *Watch a label
+  automatically once its whole catalogue is downloaded*; the *Already downloaded in full*
+  panel still offers a Watch button per label.
+* **Folder marker.** At the same moment, a small hidden `.bpdl-label.json` is written inside
+  the folder the download landed in. It names the label and nothing else. Move that folder
+  into your library, rename it, put it on another disk — the marker travels with the contents,
+  and the next check finds the folder again and updates the watch entry to point at its new
+  home. Delete the file and the folder simply stops being followed.
+* **Why a marker and not the folder name.** A rename defeats name matching outright, and a
+  real library has the same label filed under two genres. A wrong guess writes a download into
+  another label's folder, unattended, hours later.
+* **What happens when it cannot be found.** Nothing is guessed. If the folder is gone, or the
+  label is marked in two places, or something else's marker sits where yours should be, the
+  new releases go to the staging folder (`watch_downloads_directory`) and the card says why.
+  The recorded path is kept, not cleared — an unplugged drive looks exactly like a deleted
+  folder, and the next check picks it back up once the drive is there.
+* **Nothing is ever replaced.** A per-label destination pins `track_exists` to `skip`
+  regardless of the global setting, and a destination that does not exist is never created —
+  creating it is what buries a download in a path you reorganised away months ago.
+* **Re-find folders** (button, next to *Check now*) does the relocation pass immediately
+  instead of at the next sweep. Useful right after a reorganise.
+
 ## Config reference
 
 Everything under `config/bpdl-config.yml` is editable via the Settings screen, with one
