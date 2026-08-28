@@ -20,33 +20,28 @@
 
 * { box-sizing: border-box; }
 
-html { background: var(--bg); }
+html { background: #000; }
 
 body {
   margin: 0;
-  /* transparent so the fixed dark gradient layer below (body::before) shows. */
-  background: transparent;
+  background: #000;
   color: var(--text);
   font-family: var(--font);
   min-height: 100vh;
   overflow-x: hidden;
 }
 
-/* Dark anime wallpaper: monochrome figure on the left, near-black everywhere
-   else — the app column sits over the black. Light vignette + bottom fade keep
-   text readable without burying the art; a faint red wash echoes her eyes. */
-body::before {
-  content: "";
-  position: fixed;
-  inset: 0;
-  z-index: -1;
-  background:
-    radial-gradient(900px 500px at 18% 20%, rgba(229, 72, 77, 0.06) 0%, transparent 65%),
-    radial-gradient(120% 120% at 50% 40%, transparent 55%, rgba(0, 0, 0, 0.6) 100%),
-    linear-gradient(180deg, rgba(6, 6, 7, 0.25) 0%, rgba(6, 6, 7, 0.45) 55%, rgba(4, 4, 5, 0.78) 100%),
-    url("/static/wallpaper-dark.webp") left center / cover no-repeat #060607;
-  pointer-events: none;
-}
+/* Plain black background (owner's call, 2026-08-28).
+
+   This was a stacked body::before layer — anime artwork, a red radial wash, a
+   vignette and a bottom fade. It cost legibility for decoration: body copy over
+   the lit part of the figure sat well under a readable contrast ratio, which is
+   visible in the pre-2.12.1 README screenshots. Flat black instead, so every
+   surface colour in :root is measured against a known background rather than
+   against whatever the artwork happened to be doing behind it.
+
+   The wallpaper file is kept in static/ rather than deleted — putting the art
+   back is one rule, and it is a nuisance to recover once gone. */
 
 .hidden { display: none !important; }
 
@@ -66,9 +61,10 @@ body::before {
   background: radial-gradient(ellipse at center, rgba(229,72,77,0.13) 0%, rgba(150,40,45,0.06) 40%, transparent 70%);
   pointer-events: none;
 }
-/* Monochrome wordmark to match the wallpaper's ink-and-shadow art: heavy clean
-   type filled white-to-smoke, lit from above, with a low red glow bleeding up
-   from below — the same red as her eyes and the remix tag. */
+/* Monochrome wordmark: heavy clean type filled white-to-smoke, lit from above,
+   with a low red glow bleeding up from below matching the remix tag. The gradient
+   fill was drawn to sit over artwork; on flat black it reads as intended too, so
+   it stays. */
 #hero-logo {
   position: relative;
   margin: 0; text-align: center;
