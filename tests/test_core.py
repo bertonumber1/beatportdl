@@ -10,11 +10,12 @@ from unittest import mock
 
 import pytest
 
+from bpdl import api
 from bpdl.config import AppConfig
 from bpdl.download import download_file, save_track, skippable_reason, track_matches_filter
 from bpdl.links import InvalidUrlError, parse_url
 from bpdl.models import Genre, Track
-from bpdl.scanner import sanitize_params
+from bpdl.scanner import IncompletePagination, for_paginated, sanitize_params
 from bpdl.templates import number_with_padding, parse_template, sanitize_path
 
 # ---- links.parse_url --------------------------------------------------------
@@ -56,6 +57,113 @@ def test_sanitize_params_strips_pagination():
     assert sanitize_params("page=3&per_page=25&order=asc") == "order=asc"
     assert sanitize_params("") == ""
     assert sanitize_params("order=asc") == "order=asc"
+
+
+# ---- scanner.for_paginated --------------------------------------------------
+
+
+class _Page:
+    """Minimal stand-in for api.Paginated — the only three fields a walk reads."""
+
+    def __init__(self, results, nxt, count):
+        self.results = results
+        self.next = nxt
+        self.count = count
+
+
+def _walker(pages):
+    """fetch_page over a canned list, recording which pages were asked for."""
+    asked = []
+
+    def fetch(entity_id, page, params):
+        asked.append(page)
+        return pages[page - 1]
+
+    return fetch, asked
+
+
+def test_for_paginated_walks_every_page():
+    pages = [_Page([1, 2], "next", 5), _Page([3, 4], "next", 5), _Page([5], None, 5)]
+    fetch, asked = _walker(pages)
+    seen = []
+    for_paginated(1, "", fetch, lambda item, i: seen.append(item))
+    assert seen == [1, 2, 3, 4, 5]
+    assert asked == [1, 2, 3]
+
+
+def test_for_paginated_rejects_a_walk_that_ends_short():
+    """A truncated response looks exactly like the end of a catalogue. Believing it
+    is how a 1,984-release label quietly downloads as 280 releases, so the walk is
+    only complete once it has seen as many items as the server said existed."""
+    pages = [_Page([1, 2], "next", 100), _Page([3], None, 100)]
+    fetch, asked = _walker(pages)
+    seen = []
+    with pytest.raises(IncompletePagination) as e:
+        for_paginated(1, "", fetch, lambda item, i: seen.append(item))
+    assert "3 of 100" in str(e.value)
+    # page 2 was asked for twice: once walked, once to confirm before failing
+    assert asked == [1, 2, 2]
+
+
+def test_for_paginated_retries_the_short_page_without_double_processing():
+    """The retry must not re-run process_item over items it already handled — those
+    queue downloads and write baseline rows, so a replay is not free."""
+    short = _Page([3], "", 5)
+    full = _Page([3, 4], "next", 5)
+    last = _Page([5], None, 5)
+    order = [_Page([1, 2], "next", 5), short, full, last]
+    calls = []
+
+    def fetch(entity_id, page, params):
+        calls.append(page)
+        return order[len(calls) - 1]
+
+    seen = []
+    for_paginated(1, "", fetch, lambda item, i: seen.append(item))
+    assert seen == [1, 2, 3, 4, 5]      # 3 walked once, not twice
+    assert calls == [1, 2, 2, 3]
+
+
+def test_for_paginated_accepts_an_end_with_no_reported_total():
+    """Endpoints that report no count get the old behaviour — there is nothing to
+    check the walk against, and refusing them would break every one of them."""
+    fetch, _ = _walker([_Page([1], None, 0)])
+    seen = []
+    for_paginated(1, "", fetch, lambda item, i: seen.append(item))
+    assert seen == [1]
+
+
+def test_for_paginated_stop_does_not_trip_the_completeness_check():
+    """An explicit user Stop is a deliberate short walk, not a broken one."""
+    fetch, _ = _walker([_Page([1], "next", 100)])
+    for_paginated(1, "", fetch, lambda item, i: None, should_stop=lambda: True)
+
+
+def test_bulk_walks_ask_for_a_hundred_a_page():
+    """Beatport serves 10 a page by default, which is ~200 sequential requests for a
+    2,000-release label. Each one is a chance for the walk to be cut short."""
+    from bpdl.api import WALK_PAGE_SIZE
+
+    assert WALK_PAGE_SIZE == 100
+    seen = []
+
+    class _Client(api.BeatportClient):
+        def __init__(self):
+            pass
+
+        def _paginated(self, endpoint, item_cls):
+            seen.append(endpoint)
+            return _Page([], None, 0)
+
+    c = _Client()
+    c.get_label_releases(27465, 2, "publish_date=2026-01-01:")
+    c.get_artist_tracks(1, 1, "")
+    c.get_release_tracks(1, 1, "")
+    # the caller's own params come last, so an explicit per_page still wins
+    c.get_label_releases(27465, 1, "order_by=-publish_date", per_page=1)
+    assert seen[0] == "/catalog/labels/27465/releases/?page=2&per_page=100&publish_date=2026-01-01:"
+    assert "per_page=100" in seen[1] and "per_page=100" in seen[2]
+    assert seen[3] == "/catalog/labels/27465/releases/?page=1&per_page=1&order_by=-publish_date"
 
 
 # ---- download.skippable_reason ----------------------------------------------

@@ -39,22 +39,61 @@ def rank_map(m: dict[str, int]) -> list[RankEntry]:
     return sorted((RankEntry(k, v) for k, v in m.items()), key=lambda e: (-e.count, e.name))
 
 
+class IncompletePagination(RuntimeError):
+    """A walk ran out of pages before it had seen everything the server said was
+    there. Raised rather than returned, because a short walk that looks like a
+    finished one is precisely how a label's catalogue silently half-downloads."""
+
+
 def for_paginated(entity_id: int, params: str, fetch_page, process_item, should_stop=None) -> None:
     """should_stop, if given, is checked before every page fetch — lets a long
     walk be interrupted (e.g. on an explicit user Stop) instead of running to
     natural completion or, in a worst case, forever (see sanitize_params: a
     pasted URL with its own page=/per_page= query params can make the server
-    always re-serve the same page, so paginated.next never goes falsy)."""
+    always re-serve the same page, so paginated.next never goes falsy).
+
+    The end of pagination is believed only once the number of items actually
+    walked reaches the total the server itself reported. `next` alone is not
+    evidence of completion: one truncated response ends the walk
+    indistinguishably from a real finish, and the caller then treats a fraction
+    of a catalogue as the whole of it.
+
+    A short finish re-fetches the same page once before giving up. Only the items
+    that page did not serve the first time are processed, so the retry cannot
+    double-count — which matters because process_item has side effects (it queues
+    downloads and writes baseline rows). Still short after the retry is an error,
+    not a result.
+    """
     page = 1
+    seen = 0
+    done_on_page = 0   # items of `page` already handed to process_item
+    retried = False
     while True:
         if should_stop and should_stop():
             return
         paginated = fetch_page(entity_id, page, params)
-        for i, item in enumerate(paginated.results):
+        fresh = paginated.results[done_on_page:]
+        for i, item in enumerate(fresh, start=done_on_page):
             process_item(item, i)
-        if not paginated.next:
-            break
-        page += 1
+        seen += len(fresh)
+        done_on_page += len(fresh)
+
+        if paginated.next:
+            page += 1
+            done_on_page = 0
+            retried = False
+            continue
+
+        # count is absent (0) on endpoints that don't report a total — nothing to
+        # check against there, so the old behaviour stands.
+        total = paginated.count or 0
+        if total and seen < total:
+            if not retried:
+                retried = True
+                continue
+            raise IncompletePagination(
+                f"pagination ended at page {page} after {seen} of {total} items")
+        return
 
 
 def sanitize_params(params: str) -> str:

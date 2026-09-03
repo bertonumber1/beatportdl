@@ -20,7 +20,7 @@ from bpdl.download import (
 )
 from bpdl.links import ARTIST_LINK, CHART_LINK, LABEL_LINK, PLAYLIST_LINK, RELEASE_LINK, TRACK_LINK, Link, parse_url
 from bpdl.models import NamingPreferences
-from bpdl.scanner import for_paginated, sanitize_params
+from bpdl.scanner import IncompletePagination, for_paginated, sanitize_params
 
 console = Console()
 
@@ -303,6 +303,15 @@ class App:
                 link.id, sanitize_params(link.params), client.get_label_releases, on_release,
                 should_stop=self.cancelled.is_set,
             )
+        except IncompletePagination as e:
+            # Half a catalogue must not finish as a completed item. Logging it and
+            # returning made a label whose back catalogue was never even listed look
+            # like a success with one anonymous failure against it; re-raising fails
+            # the queue item by name, and — because the item is failed — keeps it out
+            # of the "whole catalogue is now held" mark that would otherwise move
+            # every future update past releases nobody ever fetched.
+            self._log_error(link.original, "handle label releases", e)
+            raise
         except Exception as e:
             self._log_error(link.original, "handle label releases", e)
 
@@ -374,6 +383,11 @@ class App:
                 link.id, sanitize_params(link.params), client.get_artist_tracks, on_track,
                 should_stop=self.cancelled.is_set,
             )
+        except IncompletePagination as e:
+            # Same as the label path: a partly-listed artist is a failed item, not a
+            # quiet one.
+            self._log_error(link.original, "handle artist tracks", e)
+            raise
         except Exception as e:
             self._log_error(link.original, "handle artist tracks", e)
             return

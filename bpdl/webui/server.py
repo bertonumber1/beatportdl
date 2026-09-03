@@ -558,14 +558,19 @@ def peek(payload: PeekPayload) -> dict:
     params = sanitize_params(link.params)
     try:
         if link.type == LABEL_LINK:
-            page = client.get_label_releases(link.id, 1, params)
+            page = client.get_label_releases(link.id, 1, params, per_page=1)
             return {"count": page.count, "kind": "releases"}
         if link.type == ARTIST_LINK:
-            page = client.get_artist_tracks(link.id, 1, params)
+            page = client.get_artist_tracks(link.id, 1, params, per_page=1)
             return {"count": page.count, "kind": "tracks"}
     except Exception as e:
         raise HTTPException(400, f"Failed to check size: {e}") from e
     return {"count": None, "kind": None}
+
+
+# Browsing is a person reading a grid, not a walk: page size here is a UI choice,
+# independent of the bulk WALK_PAGE_SIZE the scanners and downloaders use.
+_BROWSE_PAGE_SIZE = 10
 
 
 class BrowsePayload(BaseModel):
@@ -593,7 +598,7 @@ def browse(payload: BrowsePayload) -> dict:
     page = max(1, payload.page)
     try:
         if link.type == LABEL_LINK:
-            pg = client.get_label_releases(link.id, page, params)
+            pg = client.get_label_releases(link.id, page, params, per_page=_BROWSE_PAGE_SIZE)
             items = [{
                 "name": r.name,
                 "artist": display_artists(r.artists, 3),
@@ -606,7 +611,7 @@ def browse(payload: BrowsePayload) -> dict:
             } for r in pg.results]
             kind = "releases"
         else:
-            pg = client.get_artist_tracks(link.id, page, params)
+            pg = client.get_artist_tracks(link.id, page, params, per_page=_BROWSE_PAGE_SIZE)
             items = [{
                 "name": f"{t.name} ({t.mix_name})" if t.mix_name else t.name,
                 "artist": display_artists(t.artists, 3),
@@ -1539,7 +1544,7 @@ def _newest_publish_date(client, label_id: int) -> str:
     One page of one result — cheap, and exact, which matters because this becomes
     the mark every later incremental update starts from."""
     try:
-        page = client.get_label_releases(label_id, 1, "order_by=-publish_date&per_page=1")
+        page = client.get_label_releases(label_id, 1, "order_by=-publish_date", per_page=1)
         for release in page.results:
             got = _parse_release_date(release.publish_date)
             if got:

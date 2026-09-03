@@ -72,6 +72,16 @@ class Paginated:
         ]
 
 
+# Beatport serves 10 items a page unless told otherwise. Walking a 2,000-release
+# label at 10 a page is ~200 sequential round trips, each one a chance for the walk
+# to be cut short; 100 makes it 20. Verified against the live API, which accepts
+# per_page up to at least 200. Callers that want a different size (a UI page, or a
+# probe that only needs .count) pass their own — it is written into the query string
+# ahead of the caller's raw params, and Django resolves a repeated key to the LAST
+# occurrence, so an explicit per_page in params still wins.
+WALK_PAGE_SIZE = 100
+
+
 class BeatportClient:
     def __init__(self, store: str, proxy: str, auth: Auth):
         self.store = store
@@ -158,8 +168,10 @@ class BeatportClient:
     def get_release(self, release_id: int) -> Release:
         return Release.from_json(self._get(f"/catalog/releases/{release_id}/"), self.store)
 
-    def get_release_tracks(self, release_id: int, page: int, params: str = "") -> Paginated:
-        return self._paginated(f"/catalog/releases/{release_id}/tracks/?page={page}&{params}", Track)
+    def get_release_tracks(self, release_id: int, page: int, params: str = "",
+                           per_page: int = WALK_PAGE_SIZE) -> Paginated:
+        return self._paginated(
+            f"/catalog/releases/{release_id}/tracks/?page={page}&per_page={per_page}&{params}", Track)
 
     # --- labels -----------------------------------------------------------
 
@@ -173,16 +185,20 @@ class BeatportClient:
         # this looks like a Beatport-side API change rather than a porting bug.
         return self._paginated(f"/catalog/labels/?name={quote(query)}&order_by=name&per_page=10", Label)
 
-    def get_label_releases(self, label_id: int, page: int, params: str = "") -> Paginated:
-        return self._paginated(f"/catalog/labels/{label_id}/releases/?page={page}&{params}", Release)
+    def get_label_releases(self, label_id: int, page: int, params: str = "",
+                           per_page: int = WALK_PAGE_SIZE) -> Paginated:
+        return self._paginated(
+            f"/catalog/labels/{label_id}/releases/?page={page}&per_page={per_page}&{params}", Release)
 
     # --- artists -----------------------------------------------------------
 
     def get_artist(self, artist_id: int) -> Artist:
         return Artist.from_json(self._get(f"/catalog/artists/{artist_id}/"))
 
-    def get_artist_tracks(self, artist_id: int, page: int, params: str = "") -> Paginated:
-        return self._paginated(f"/catalog/artists/{artist_id}/tracks/?page={page}&{params}", Track)
+    def get_artist_tracks(self, artist_id: int, page: int, params: str = "",
+                          per_page: int = WALK_PAGE_SIZE) -> Paginated:
+        return self._paginated(
+            f"/catalog/artists/{artist_id}/tracks/?page={page}&per_page={per_page}&{params}", Track)
 
     # --- playlists -----------------------------------------------------------
 
